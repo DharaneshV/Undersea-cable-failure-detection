@@ -1,0 +1,39 @@
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual Environment ───────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Streamlit ─────────────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ── Model weights (large binary — keep out of git) ────────────
+saved_model/*.h5
+saved_model/*.keras
+saved_model/*.pkl
+
+# ── Generated outputs ─────────────────────────────────────────
+evaluation_plots/
+*.csv
+*.zip
+
+# ── IDE / OS ──────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+logs/

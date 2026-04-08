@@ -1,0 +1,10 @@
+# Pinned for reproducibility.
+# TensorFlow 2.15 is the last stable 2.x release; the Keras API
+# changed significantly in TF 3.x so avoid open-ended >= constraints.
+numpy==1.26.*
+pandas==2.2.*
+tensorflow==2.15.*
+scikit-learn==1.4.*
+streamlit==1.32.*
+plotly==5.20.*
+matplotlib==3.8.*
