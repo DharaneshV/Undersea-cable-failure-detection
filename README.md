@@ -122,14 +122,5 @@ Signal speed in fibre ≈ 2×10⁸ m/s.
 Time delay is estimated from the sample index of the detected anomaly.
 
 ---
-
-## For your viva
-
-Key points to explain:
-1. Why LSTM? — Cable data is sequential; LSTMs capture temporal patterns.
-2. Why autoencoder? — Unsupervised; works without fault labels (scarce in real life).
-3. Threshold? — Set at 95th percentile of normal reconstruction error.
-4. TDR? — Industry-standard method for locating cable breaks.
-5. Scalability — Real system uses DAS fibre optics; same anomaly detection logic applies.
-6. Severity classification — Score/threshold ratio determines Low/Medium/High/Critical.
+l.
 7. Health monitoring — Rolling window health metric for operational awareness.
