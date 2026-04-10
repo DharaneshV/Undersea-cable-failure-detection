@@ -1,0 +1,5 @@
+fault_type,start_sample,duration_samples,fault_distance_m
+cable_cut,7144,344,9.6
+anchor_drag,8509,475,363.7
+overheating,1741,491,208.2
+insulation_failure,6491,190,405.0

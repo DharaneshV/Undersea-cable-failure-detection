@@ -24,8 +24,11 @@ saved_model/*.pkl
 
 # ── Generated outputs ─────────────────────────────────────────
 evaluation_plots/
-*.csv
+/*.csv
 *.zip
+
+# ── Allow datasets directory (real-world data) ────────────────
+!datasets/
 
 # ── IDE / OS ──────────────────────────────────────────────────
 .vscode/

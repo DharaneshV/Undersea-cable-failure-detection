@@ -378,7 +378,7 @@ if "manual_rows" not in st.session_state:
 
 
 # ── check pretrained model ────────────────────────────────────────────────────
-if not os.path.exists("saved_model/lstm_ae.keras"):
+if not os.path.exists("saved_model/conv_transformer_ae.keras"):
     st.error("⚠️ No saved model found.")
     st.markdown("""
     Run the following command to train the model before launching the dashboard:
@@ -396,7 +396,7 @@ def load_model():
     detector.load()
     return detector
 
-with st.spinner("Loading pretrained LSTM model…"):
+with st.spinner("Loading pretrained Transformer model…"):
     detector = load_model()
 
 
@@ -521,7 +521,7 @@ def cable_svg(cable_len: int, faults: list[dict]) -> str:
         f'<path id="cable-path" d="M{MX},{CY} L{W-MX},{CY}" fill="none"/>',
     ]
     # Station boxes
-    for sx, label, dist_label in [(MX, "Station A", "0 m"), (W-MX, "Station B", f"{cable_len} m")]:
+    for sx, label, dist_label in [(MX, "Substation A", "0 m"), (W-MX, "Substation B", f"{cable_len} m")]:
         anchor = "middle"
         parts += [
             f'<rect x="{sx-18}" y="{CY-16}" width="36" height="32" rx="6" fill="rgba(0,212,255,0.1)" stroke="#00D4FF" stroke-width="1.5" filter="url(#gl)"/>',
@@ -558,10 +558,10 @@ def cable_svg(cable_len: int, faults: list[dict]) -> str:
 st.markdown("""
 <div class="hero-bar">
   <div class="hero-left">
-    <div class="hero-icon">🌊</div>
+    <div class="hero-icon">⚡</div>
     <div>
-      <div class="hero-title">Undersea Cable Fault Detection</div>
-      <div class="hero-sub">LSTM-AE &nbsp;·&nbsp; TDR Localisation &nbsp;·&nbsp; Real-time XAI Scoring</div>
+      <div class="hero-title">Smart Grid Fault Detection</div>
+      <div class="hero-sub">LSTM-AE &nbsp;·&nbsp; Power Network Localisation &nbsp;·&nbsp; Real-time XAI Scoring</div>
     </div>
   </div>
   <div class="hero-right">
@@ -593,33 +593,50 @@ with tab_live:
     with st.sidebar:
         st.markdown("""
         <div class="sidebar-brand">
-          <span class="sidebar-brand-icon">🌊</span>
-          <div class="sidebar-brand-name">Cable Monitor</div>
-          <div class="sidebar-brand-tagline">LSTM · TDR · XAI</div>
+          <span class="sidebar-brand-icon">⚡</span>
+          <div class="sidebar-brand-name">Smart Grid Monitor</div>
+          <div class="sidebar-brand-tagline">LSTM · XAI Tracker</div>
         </div>
-        <div class="sidebar-section">⚙ Simulation Config</div>
+        <div class="sidebar-section">⚙ Data Source</div>
         """, unsafe_allow_html=True)
-        n_seconds = st.slider("Duration (seconds)", 60, 600, 300, 30)
-        fault_count = st.slider("Fault events", 0, 10, 5)
-        env_noise = st.checkbox("Deep-sea environmental noise", value=True)
-        seed = st.number_input("Random seed", value=42, step=1)
+        
+        # Look for CSVs in datasets directory
+        dataset_dir = "datasets"
+        if os.path.exists(dataset_dir):
+            csv_files = [f for f in os.listdir(dataset_dir) if f.endswith(".csv") and not f.endswith("_fault_log.csv")]
+        else:
+            csv_files = []
+            
+        selected_csv = st.selectbox("Select dataset to stream:", csv_files)
+        
         st.markdown('<div class="sidebar-section">▶ Playback</div>', unsafe_allow_html=True)
         playback_spd = st.select_slider("Speed", options=["0.25×", "0.5×", "1×", "2×", "5×", "Max"], value="2×")
         speed_map = {"0.25×": 0.10, "0.5×": 0.05, "1×": 0.02, "2×": 0.01, "5×": 0.004, "Max": 0.0}
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        start_btn = st.button("▶  Start Simulation", type="primary", use_container_width=True)
+        start_btn = st.button("▶  Start Live Stream", type="primary", use_container_width=True)
 
     if not start_btn and st.session_state.active_dataset["source"] != "simulation":
         st.markdown("""
         <div class="empty-state">
-          <span class="empty-icon">🌊</span>
+          <span class="empty-icon">⚡</span>
           <div class="empty-title">Ready to Monitor</div>
-          <div class="empty-sub">Configure the simulation parameters in the sidebar, then press <strong style="color:#00D4FF">▶ Start Simulation</strong> to begin real-time fault detection.</div>
+          <div class="empty-sub">Select your real-world dataset in the sidebar, then press <strong style="color:#00D4FF">▶ Start Live Stream</strong> to begin point-based fault detection.</div>
         </div>
         """, unsafe_allow_html=True)
     elif start_btn:
-        with st.spinner("Generating cable data & running inference…"):
-            df_full, fault_log = generate_dataset(n_seconds=n_seconds, fault_count=fault_count, seed=int(seed), env_noise=env_noise)
+        with st.spinner("Loading smart grid data & running inference…"):
+            if not selected_csv:
+                st.error("No dataset selected. Generate or fetch one first.")
+                st.stop()
+            
+            df_full = pd.read_csv(os.path.join(dataset_dir, selected_csv))
+            
+            log_name = selected_csv.replace(".csv", "_fault_log.csv")
+            log_path = os.path.join(dataset_dir, log_name)
+            fault_log = []
+            if os.path.exists(log_path):
+                fault_log = pd.read_csv(log_path).to_dict('records')
+                
             result_full = detector.predict(df_full)
 
         total_frames = max(len(result_full) - SEQ_LEN, 1)
@@ -638,8 +655,10 @@ with tab_live:
         delay = speed_map[playback_spd]
         window = SEQ_LEN
         
+        skip_map = {"0.25×": 1, "0.5×": 2, "1×": 4, "2×": 10, "5×": 25, "Max": 100}
+        frame_skip = skip_map.get(playback_spd, 1)
+
         for i in range(window, len(result_full)):
-            chunk = result_full.iloc[max(0, i - 150): i]
             row = result_full.iloc[i]
             
             sc = float(row["anomaly_score"]) if not pd.isna(row["anomaly_score"]) else 0.0
@@ -647,93 +666,97 @@ with tab_live:
             is_warning = bool(sc > 0.75 * thr and not is_fault and not pd.isna(row["anomaly_score"]))
             ftype = row.get("fault_type", "none")
             
-            progress_bar.progress(min((i - window) / total_frames, 1.0), text=f"Sample {i:,} / {len(result_full):,}")
-            
-            hp = health_pct_ema(chunk["anomaly_score"].values, thr)
-            health_ph.markdown(health_gauge_html(hp), unsafe_allow_html=True)
-            metrics_ph.markdown(build_status_cards(row, sc, thr, i, is_fault, is_warning), unsafe_allow_html=True)
-            
-            if is_fault or is_warning:
-                sev_label, sev_cls = severity_of(sc, thr)
-                feat_errs = {feat: float(row.get(f"err_{feat}", 0)) for feat in FEATURES}
-                tot_err = sum(feat_errs.values())
-                xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
-                
-                if is_fault and (not detected_faults or detected_faults[-1]["_idx"] < i - 50):
-                    dist = match_fault_distance(i, fault_log)
-                    detected_faults.append({
-                        "_idx": i, "_ftype": ftype, "Time": str(row["timestamp"])[:19],
-                        "Fault type": ftype.replace("_", " ").title(), "Severity": sev_label,
-                        "Anomaly score": f"{sc:.4f}", "Est. distance": f"{dist} m"
-                    })
-                
-                if is_fault:
-                    alert_cls, icon_cls, icon, headline = "fault-alert", "alert-icon-fault", "🚨", "FAULT DETECTED"
-                else:
-                    alert_cls, icon_cls, icon, headline = "warning-alert", "alert-icon-warning", "⚠", "DEGRADING — EARLY WARNING"
-                alert_ph.markdown(
-                    f'<div class="alert-banner {alert_cls}">'
-                    f'<div class="alert-icon-wrap {icon_cls}">{icon}</div>'
-                    f'<div class="alert-body">'
-                    f'<div class="alert-headline">{headline} &mdash; <span style="font-weight:500">{ftype.replace("_"," ").upper()}</span> &nbsp;<span class="sev-badge {sev_cls}">{sev_label}</span></div>'
-                    f'<div class="alert-detail">Score: {sc:.5f} &nbsp;/&nbsp; Threshold: {thr:.5f}&nbsp;&nbsp;|&nbsp;&nbsp;Ratio: {sc/thr:.2f}×</div>'
-                    f'<div class="alert-meta">📊 Anomaly driven by: {xai_text}</div>'
-                    f'</div></div>',
-                    unsafe_allow_html=True
-                )
-            else:
-                alert_ph.empty()
-            
-            cable_ph.markdown(f'<div class="cable-box"><div class="sec-hdr">📡 Cable Route — Fault Localisation (TDR)</div>{cable_svg(CABLE_LENGTH, detected_faults)}</div>', unsafe_allow_html=True)
+            # process faults under the hood unconditionally so we don't miss any during skips
+            if is_fault and (not detected_faults or detected_faults[-1]["_idx"] < i - 50):
+                dist = match_fault_distance(i, fault_log)
+                sev_label, _ = severity_of(sc, thr)
+                detected_faults.append({
+                    "_idx": i, "_ftype": ftype, "Time": str(row["timestamp"])[:19],
+                    "Fault type": ftype.replace("_", " ").title(), "Severity": sev_label,
+                    "Anomaly score": f"{sc:.4f}", "Est. distance": f"{dist} m"
+                })
 
-            
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Voltage & Current", "Temperature & Vibration", "Anomaly Score"), vertical_spacing=0.09, row_heights=[0.35, 0.35, 0.30])
-            ts = chunk["timestamp"]
-            fig.add_trace(go.Scatter(x=ts, y=chunk["voltage"], name="Voltage", line=dict(color="#378ADD", width=1.4)), row=1, col=1)
-            fig.add_trace(go.Scatter(x=ts, y=chunk["current"], name="Current", line=dict(color="#1D9E75", width=1.4)), row=1, col=1)
-            fig.add_trace(go.Scatter(x=ts, y=chunk["temperature"], name="Temp", line=dict(color="#EF9F27", width=1.4)), row=2, col=1)
-            fig.add_trace(go.Scatter(x=ts, y=chunk["vibration"], name="Vibration", line=dict(color="#D85A30", width=1.1)), row=2, col=1)
-            fig.add_trace(go.Scatter(x=ts, y=chunk["anomaly_score"], name="Score", line=dict(color="#7F77DD", width=1.5), fill="tozeroy", fillcolor="rgba(127,119,221,0.08)"), row=3, col=1)
-            fig.add_hline(y=thr, line_dash="dash", line_color="#E24B4A", annotation_text="threshold", annotation_font_color="#E24B4A", row=3, col=1)
-            for fl in fault_log:
-                fs = df_full.iloc[fl["start_sample"]]["timestamp"]
-                fe = df_full.iloc[min(fl["start_sample"] + fl["duration_samples"], len(df_full) - 1)]["timestamp"]
-                fc = FAULT_COLORS.get(fl["fault_type"], "#888")
-                fig.add_vrect(x0=fs, x1=fe, fillcolor=fc, opacity=0.07, line_width=0, row="all", col=1)
-            fig.update_layout(
-                height=460, margin=dict(l=0, r=0, t=32, b=0), showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
-                            bgcolor="rgba(0,0,0,0)", font=dict(size=11, color="rgba(240,246,255,0.5)")),
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(8,12,20,0.6)",
-                font=dict(family="Inter", color="rgba(240,246,255,0.5)"),
-                xaxis=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
-                xaxis2=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
-                xaxis3=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
-                yaxis=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
-                yaxis2=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
-                yaxis3=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
-            )
-            chart_ph.plotly_chart(fig, use_container_width=True)
-            
-            if detected_faults:
-                rows_html = "".join([
-                    f'<div class="fault-log-row">'
-                    f'<span class="fault-log-time">{f["Time"]}</span>'
-                    f'<span class="fault-log-type">{f["Fault type"]}</span>'
-                    f'<span><span class="sev-badge sev-{f["Severity"].lower()}">{f["Severity"]}</span></span>'
-                    f'<span class="fault-log-score">{f["Anomaly score"]}</span>'
-                    f'<span class="fault-log-dist">{f["Est. distance"]}</span>'
-                    f'</div>'
-                    for f in detected_faults
-                ])
-                ftbl_ph.markdown(
-                    f'<div class="sec-hdr">🗂 Detected Fault Log ({len(detected_faults)} events)</div>'
-                    f'<div class="fault-log-header"><span>Time</span><span>Type</span><span>Severity</span><span>Score</span><span>Distance</span></div>'
-                    f'{rows_html}',
-                    unsafe_allow_html=True
+            # skip rendering for UI lag prevention
+            if i % frame_skip == 0 or i == len(result_full) - 1:
+                chunk = result_full.iloc[max(0, i - 150): i]
+                progress_bar.progress(min((i - window) / total_frames, 1.0), text=f"Sample {i:,} / {len(result_full):,}")
+                
+                hp = health_pct_ema(chunk["anomaly_score"].values, thr)
+                health_ph.markdown(health_gauge_html(hp), unsafe_allow_html=True)
+                metrics_ph.markdown(build_status_cards(row, sc, thr, i, is_fault, is_warning), unsafe_allow_html=True)
+                
+                if is_fault or is_warning:
+                    sev_label, sev_cls = severity_of(sc, thr)
+                    feat_errs = {feat: float(row.get(f"err_{feat}", 0)) for feat in FEATURES}
+                    tot_err = sum(feat_errs.values())
+                    xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
+                    
+                    if is_fault:
+                        alert_cls, icon_cls, icon, headline = "fault-alert", "alert-icon-fault", "🚨", "FAULT DETECTED"
+                    else:
+                        alert_cls, icon_cls, icon, headline = "warning-alert", "alert-icon-warning", "⚠", "DEGRADING — EARLY WARNING"
+                    alert_ph.markdown(
+                        f'<div class="alert-banner {alert_cls}">'
+                        f'<div class="alert-icon-wrap {icon_cls}">{icon}</div>'
+                        f'<div class="alert-body">'
+                        f'<div class="alert-headline">{headline} &mdash; <span style="font-weight:500">{ftype.replace("_"," ").upper()}</span> &nbsp;<span class="sev-badge {sev_cls}">{sev_label}</span></div>'
+                        f'<div class="alert-detail">Score: {sc:.5f} &nbsp;/&nbsp; Threshold: {thr:.5f}&nbsp;&nbsp;|&nbsp;&nbsp;Ratio: {sc/thr:.2f}×</div>'
+                        f'<div class="alert-meta">📊 Anomaly driven by: {xai_text}</div>'
+                        f'</div></div>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    alert_ph.empty()
+                
+                cable_ph.markdown(f'<div class="cable-box"><div class="sec-hdr">🔌 Power Grid Link — Fault Localisation</div>{cable_svg(CABLE_LENGTH, detected_faults)}</div>', unsafe_allow_html=True)
+
+                fig = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("Voltage & Current", "Temperature & Vibration", "Anomaly Score"), vertical_spacing=0.09, row_heights=[0.35, 0.35, 0.30])
+                ts = chunk["timestamp"]
+                fig.add_trace(go.Scatter(x=ts, y=chunk["voltage"], name="Voltage", line=dict(color="#378ADD", width=1.4)), row=1, col=1)
+                fig.add_trace(go.Scatter(x=ts, y=chunk["current"], name="Current", line=dict(color="#1D9E75", width=1.4)), row=1, col=1)
+                fig.add_trace(go.Scatter(x=ts, y=chunk["temperature"], name="Temp", line=dict(color="#EF9F27", width=1.4)), row=2, col=1)
+                fig.add_trace(go.Scatter(x=ts, y=chunk["vibration"], name="Vibration", line=dict(color="#D85A30", width=1.1)), row=2, col=1)
+                fig.add_trace(go.Scatter(x=ts, y=chunk["anomaly_score"], name="Score", line=dict(color="#7F77DD", width=1.5), fill="tozeroy", fillcolor="rgba(127,119,221,0.08)"), row=3, col=1)
+                fig.add_hline(y=thr, line_dash="dash", line_color="#E24B4A", annotation_text="threshold", annotation_font_color="#E24B4A", row=3, col=1)
+                for fl in fault_log:
+                    fs = df_full.iloc[fl["start_sample"]]["timestamp"]
+                    fe = df_full.iloc[min(fl["start_sample"] + fl["duration_samples"], len(df_full) - 1)]["timestamp"]
+                    fc = FAULT_COLORS.get(fl["fault_type"], "#888")
+                    fig.add_vrect(x0=fs, x1=fe, fillcolor=fc, opacity=0.07, line_width=0, row="all", col=1)
+                fig.update_layout(
+                    height=460, margin=dict(l=0, r=0, t=32, b=0), showlegend=True,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                                bgcolor="rgba(0,0,0,0)", font=dict(size=11, color="rgba(240,246,255,0.5)")),
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(8,12,20,0.6)",
+                    font=dict(family="Inter", color="rgba(240,246,255,0.5)"),
+                    xaxis=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
+                    xaxis2=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
+                    xaxis3=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
+                    yaxis=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
+                    yaxis2=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
+                    yaxis3=dict(gridcolor="rgba(255,255,255,0.04)", zeroline=False),
                 )
-            
-            time.sleep(delay)
+                chart_ph.plotly_chart(fig, use_container_width=True, key=f"live_monitor_chart_{i}")
+                
+                if detected_faults:
+                    rows_html = "".join([
+                        f'<div class="fault-log-row">'
+                        f'<span class="fault-log-time">{f["Time"]}</span>'
+                        f'<span class="fault-log-type">{f["Fault type"]}</span>'
+                        f'<span><span class="sev-badge sev-{f["Severity"].lower()}">{f["Severity"]}</span></span>'
+                        f'<span class="fault-log-score">{f["Anomaly score"]}</span>'
+                        f'<span class="fault-log-dist">{f["Est. distance"]}</span>'
+                        f'</div>'
+                        for f in detected_faults
+                    ])
+                    ftbl_ph.markdown(
+                        f'<div class="sec-hdr">🗂 Detected Fault Log ({len(detected_faults)} events)</div>'
+                        f'<div class="fault-log-header"><span>Time</span><span>Type</span><span>Severity</span><span>Score</span><span>Distance</span></div>'
+                        f'{rows_html}',
+                        unsafe_allow_html=True
+                    )
+                
+                time.sleep(delay * frame_skip)
         
         progress_bar.progress(1.0, text="✅ Complete")
         st.session_state.active_dataset = {
@@ -802,7 +825,7 @@ with tab_upload:
                     else:
                         st.info("ℹ️ No label column found. Evaluation metrics skipped. Only anomaly scores are shown.")
                     
-                    st.plotly_chart(run_evaluation(preds, detector.threshold)["score_timeline_fig"], use_container_width=True)
+                    st.plotly_chart(run_evaluation(preds, detector.threshold)["score_timeline_fig"], use_container_width=True, key="upload_score_chart")
                     
                     csv_export = preds.to_csv(index=False)
                     st.download_button("📥 Download Results CSV", csv_export, "predictions.csv", "text/csv")
@@ -872,27 +895,27 @@ with tab_analytics:
                 mcols[4].metric("PR-AUC", f'{met["pr_auc"]:.3f}')
                 
                 c1, c2 = st.columns(2)
-                c1.plotly_chart(results["roc_fig"], use_container_width=True)
-                c2.plotly_chart(results["pr_fig"], use_container_width=True)
-                st.plotly_chart(results["f1_fig"], use_container_width=True)
+                c1.plotly_chart(results["roc_fig"], use_container_width=True, key="roc_chart")
+                c2.plotly_chart(results["pr_fig"], use_container_width=True, key="pr_chart")
+                st.plotly_chart(results["f1_fig"], use_container_width=True, key="f1_chart")
                 
             with st.expander("Error Analysis", expanded=False):
                 c1, c2 = st.columns(2)
-                c1.plotly_chart(results["cm_fig"], use_container_width=True)
-                c2.plotly_chart(results["error_dist_fig"], use_container_width=True)
+                c1.plotly_chart(results["cm_fig"], use_container_width=True, key="cm_chart")
+                c2.plotly_chart(results["error_dist_fig"], use_container_width=True, key="err_dist_chart_labeled")
                 if "per_sensor_fig" in results:
-                    st.plotly_chart(results["per_sensor_fig"], use_container_width=True)
+                    st.plotly_chart(results["per_sensor_fig"], use_container_width=True, key="per_sensor_chart_labeled")
         else:
             if act["source"] != "manual":
                 st.info("ℹ️ Evaluation metrics require ground-truth labels. Upload a CSV with a 'label' column to unlock.")
             if "error_dist_fig" in results:
-                st.plotly_chart(results["error_dist_fig"], use_container_width=True)
+                st.plotly_chart(results["error_dist_fig"], use_container_width=True, key="err_dist_chart_unlabeled")
             if "per_sensor_fig" in results:
-                st.plotly_chart(results["per_sensor_fig"], use_container_width=True)
+                st.plotly_chart(results["per_sensor_fig"], use_container_width=True, key="per_sensor_chart_unlabeled")
 
         with st.expander("Signal View", expanded=True):
-            st.plotly_chart(results["score_timeline_fig"], use_container_width=True)
-            st.plotly_chart(results["signal_fig"], use_container_width=True)
+            st.plotly_chart(results["score_timeline_fig"], use_container_width=True, key="timeline_chart")
+            st.plotly_chart(results["signal_fig"], use_container_width=True, key="signal_chart")
 
 
 # ── tab 4: Model Info ─────────────────────────────────────────────────────────

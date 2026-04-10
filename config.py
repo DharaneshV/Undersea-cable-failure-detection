@@ -20,7 +20,10 @@ FAULT_TYPES = ["cable_cut", "anchor_drag", "overheating", "insulation_failure"]
 
 # ── model ─────────────────────────────────────────────────────────────────────
 FEATURES        = ["voltage", "current", "temperature", "vibration"]
-SEQ_LEN         = 50        # time-steps per input window (5 seconds at 10 Hz)
+SEQ_LEN         = 60        # 60 timesteps for transformer sequence
+TRANSFORMER_HEADS  = 4
+TRANSFORMER_FF_DIM = 128
+TRANSFORMER_BLOCKS = 2
 LSTM_UNITS      = 64        # encoder outer layer units
 LATENT_UNITS    = 32        # bottleneck units
 DROPOUT_RATE    = 0.20      # applied after each LSTM layer
