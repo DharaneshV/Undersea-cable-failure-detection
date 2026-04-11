@@ -29,6 +29,11 @@ evaluation_plots/
 
 # ── Allow datasets directory (real-world data) ────────────────
 !datasets/
+# Exclude large raw source files (>10MB — use fetch_azure_pdm.py to regenerate)
+datasets/_pdm_telemetry_raw.csv
+datasets/_pdm_failures_raw.csv
+datasets/azure_pdm_full.csv
+datasets/azure_pdm_full_fault_log.csv
 
 # ── IDE / OS ──────────────────────────────────────────────────
 .vscode/

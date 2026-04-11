@@ -1,0 +1,8 @@
+fault_type,start_sample,duration_samples,fault_distance_m
+anchor_drag,72,25,187.3
+cable_cut,1512,25,475.4
+insulation_failure,2592,25,366.0
+anchor_drag,4032,25,299.3
+anchor_drag,5832,25,78.0
+insulation_failure,6912,25,78.0
+anchor_drag,8352,25,29.0

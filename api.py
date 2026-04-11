@@ -1,15 +1,42 @@
 import asyncio
 import json
+import logging
 import os
-import pandas as pd
+import time
+
 import numpy as np
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import pandas as pd
+from contextlib import asynccontextmanager
+from functools import wraps
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from pydantic import BaseModel, Field, validator
 from model import CableFaultDetector
-from config import SEQ_LEN, FEATURES
+from config import SEQ_LEN, FEATURES, NORMAL_PROFILES
 from utils import ema
 
-app = FastAPI(title="Smart Grid Flow API")
+limiter = Limiter(key_func=get_remote_address)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+log = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log.info("Starting Smart Grid API...")
+    yield
+    log.info("Shutting down Smart Grid API...")
+
+
+app = FastAPI(
+    title="Smart Grid Flow API",
+    description="Real-time undersea cable fault detection API",
+    version="2.0.0",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,6 +45,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.state.limiter = limiter
+
+
+class SensorReading(BaseModel):
+    voltage: float = Field(..., ge=0, le=500, description="Voltage in volts")
+    current: float = Field(..., ge=0, le=20, description="Current in amperes")
+    temperature: float = Field(..., ge=-10, le=100, description="Temperature in Celsius")
+    vibration: float = Field(..., ge=-1, le=10, description="Vibration in g")
+
+    @validator("voltage")
+    def validate_voltage_range(cls, v):
+        profile = NORMAL_PROFILES["voltage"]
+        if abs(v - profile[0]) > profile[1] * 10:
+            log.warning(f"Unusual voltage reading: {v}")
+        return v
+
+    @validator("current")
+    def validate_current_range(cls, c):
+        profile = NORMAL_PROFILES["current"]
+        if abs(c - profile[0]) > profile[1] * 10:
+            log.warning(f"Unusual current reading: {c}")
+        return c
+
+
+class BatchPredictionRequest(BaseModel):
+    readings: list[SensorReading]
+    batch_id: str = Field(default="batch", description="Batch identifier for tracking")
 
 # Pre-load model on startup
 print("Loading model for fast API inference...")
@@ -47,9 +102,112 @@ def get_datasets():
     files = [f for f in os.listdir("datasets") if f.endswith(".csv") and not f.endswith("_fault_log.csv")]
     return {"datasets": files}
 
+
 @app.get("/status")
 def status():
-    return {"status": "online", "threshold": detector.threshold}
+    return {
+        "status": "online",
+        "threshold": detector.threshold,
+        "model_type": "conv_transformer_ae",
+        "seq_len": SEQ_LEN,
+    }
+
+
+@app.get("/model/info")
+def model_info():
+    """Get detailed model information."""
+    import os, pickle
+    # Try to load cached roc_auc from a sidecar file if it exists
+    roc_auc = None
+    roc_path = os.path.join("saved_model", "roc_auc.pkl")
+    if os.path.exists(roc_path):
+        with open(roc_path, "rb") as f:
+            roc_auc = pickle.load(f)
+    return {
+        "model_type": "conv_transformer_ae",
+        "version": "2.0",
+        "features": FEATURES,
+        "sequence_length": SEQ_LEN,
+        "threshold": detector.threshold,
+        "roc_auc": roc_auc,
+        "dataset": "Azure Predictive Maintenance",
+        "architecture": "Conv1D + SinePositionalEncoding + TransformerEncoder × 2 + GlobalAvgPool → Dense(32) bottleneck",
+    }
+
+
+@app.post("/predict/single")
+@limiter.limit("30/minute")
+async def predict_single(request: Request, reading: SensorReading):
+    """Predict anomaly for a single sensor reading."""
+    log.info(f"Prediction request: {reading.dict()}")
+    
+    df = pd.DataFrame([{
+        "voltage": reading.voltage,
+        "current": reading.current,
+        "temperature": reading.temperature,
+        "vibration": reading.vibration,
+        "timestamp": pd.Timestamp.now(),
+        "label": 0,
+        "fault_type": "none",
+    }])
+    
+    result = detector.predict(df)
+    score = float(result["anomaly_score"].iloc[-1])
+    
+    return {
+        "anomaly_score": score,
+        "threshold": detector.threshold,
+        "is_anomaly": score > detector.threshold,
+        "severity": severity_of(score, detector.threshold)[0],
+    }
+
+
+@app.post("/predict/batch")
+@limiter.limit("10/minute")
+async def predict_batch(request: Request, batch: BatchPredictionRequest):
+    """Predict anomalies for a batch of sensor readings."""
+    log.info(f"Batch prediction: {len(batch.readings)} readings, batch_id={batch.batch_id}")
+    start_time = time.time()
+    
+    readings_data = [r.dict() for r in batch.readings]
+    df = pd.DataFrame(readings_data)
+    df["timestamp"] = pd.date_range("now", periods=len(df), freq="100ms")
+    df["label"] = 0
+    df["fault_type"] = "none"
+    
+    if len(df) < SEQ_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need at least {SEQ_LEN} readings for prediction"
+        )
+    
+    result = detector.predict(df)
+    thr = detector.threshold
+    
+    predictions = []
+    for i, row in result.iterrows():
+        if pd.isna(row["anomaly_score"]):
+            continue
+        sc = float(row["anomaly_score"])
+        predictions.append({
+            "index": i,
+            "anomaly_score": sc,
+            "is_anomaly": sc > thr,
+            "severity": severity_of(sc, thr)[0],
+        })
+    
+    anomaly_count = sum(1 for p in predictions if p["is_anomaly"])
+    elapsed = time.time() - start_time
+    
+    log.info(f"Batch complete: {anomaly_count} anomalies in {elapsed:.2f}s")
+    
+    return {
+        "batch_id": batch.batch_id,
+        "total_readings": len(batch.readings),
+        "predictions": predictions,
+        "anomaly_count": anomaly_count,
+        "processing_time": elapsed,
+    }
 
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×"):
@@ -149,3 +307,8 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
             await websocket.close()
         except:
             pass
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=False)

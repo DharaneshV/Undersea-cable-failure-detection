@@ -8,3 +8,23 @@ scikit-learn==1.4.*
 streamlit==1.32.*
 plotly==5.20.*
 matplotlib==3.8.*
+
+# Production extras
+fastapi==0.109.*
+uvicorn[standard]==0.27.*
+python-multipart==0.0.6
+pydantic==2.6.*
+pydantic-settings==2.1.*
+python-dotenv==1.0.*
+httpx==0.26.*
+websockets==12.0
+slowapi==0.1.0
+
+# Testing
+pytest==8.0.*
+pytest-cov==4.1.*
+pytest-mock==3.12.*
+pytest-asyncio==0.23.*
+
+# Utilities
+tqdm==4.66.*

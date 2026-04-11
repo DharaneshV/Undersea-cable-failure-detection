@@ -739,25 +739,45 @@ class CableFaultDetector:
 # ═════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    import argparse
+
     logging.basicConfig(
         level  = logging.INFO,
         format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    dataset_path = "datasets/my_kaggle_data.csv"
-    if not os.path.exists(dataset_path):
+    parser = argparse.ArgumentParser(
+        description="Train the Conv-Transformer Autoencoder on a labelled cable dataset."
+    )
+    parser.add_argument(
+        "--dataset",
+        type    = str,
+        default = "datasets/azure_pdm.csv",
+        help    = "Path to the labelled CSV dataset (default: datasets/azure_pdm.csv).",
+    )
+    parser.add_argument(
+        "--use-optimal-threshold",
+        action  = "store_true",
+        help    = "Sweep F1-maximising threshold on calibration split instead of percentile.",
+    )
+    args = parser.parse_args()
+
+    if not os.path.exists(args.dataset):
         log.error(
-            "Dataset not found at '%s'. Please run fetch_dataset.py first.",
-            dataset_path,
+            "Dataset not found at '%s'. "
+            "Run fetch_azure_pdm.py or fetch_dataset.py first.",
+            args.dataset,
         )
         raise SystemExit(1)
 
-    df = pd.read_csv(dataset_path)
+    log.info("Loading dataset: %s", args.dataset)
+    df = pd.read_csv(args.dataset)
+    log.info("Rows: %d | Fault rate: %.1f%%", len(df), df["label"].mean() * 100)
 
     detector = CableFaultDetector()
 
     log.info("Building and training Conv-Transformer Autoencoder…")
-    detector.train(df)
+    detector.train(df, use_optimal_threshold=args.use_optimal_threshold)
 
     log.info("Running inference on full dataset…")
     result = detector.predict(df)
@@ -766,4 +786,4 @@ if __name__ == "__main__":
     log.info("ROC-AUC: %.4f | threshold: %.6f", metrics["roc_auc"], metrics["threshold"])
 
     detector.save()
-    log.info("Done. All artifacts saved.")
+    log.info("Done. Artifacts saved to saved_model/.")
