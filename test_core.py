@@ -13,7 +13,8 @@ import pandas as pd
 import pytest
 
 from config import SEQ_LEN, FEATURES, CABLE_LENGTH
-from utils import make_sequences, check_scaler_bounds, find_optimal_threshold, ema
+from utils import make_sequences, clip_to_scaler_bounds, find_optimal_threshold, ema
+
 from simulator import generate_dataset
 
 
@@ -124,26 +125,36 @@ class TestGenerateDataset:
         assert not df1["voltage"].equals(df2["voltage"])
 
 
-# ── scaler bounds check (integration) ────────────────────────────────────────
-class TestScalerBounds:
-    def test_warn_on_out_of_range(self, caplog):
+# ── clipping bounds check (integration) ───────────────────────────────────────
+class TestClipToScalerBounds:
+    def test_values_clipped(self):
         from sklearn.preprocessing import MinMaxScaler
         scaler = MinMaxScaler()
-        train  = np.random.rand(100, 4)
+        train  = np.array([[10.0, 20.0], [50.0, 100.0]])
         scaler.fit(train)
-        # Pass data with values far outside training range
-        oob = train + 100.0
-        import logging
-        with caplog.at_level(logging.WARNING):
-            check_scaler_bounds(oob, scaler)
-        assert "outside training range" in caplog.text
+        
+        # OOB values
+        oob = np.array([[5.0, 150.0], [30.0, 50.0]])
+        clipped = clip_to_scaler_bounds(oob, scaler)
+        
+        # Min check (5 -> 10)
+        assert clipped[0, 0] == 10.0
+        # Max check (150 -> 100)
+        assert clipped[0, 1] == 100.0
+        # In-range check (30, 50 remains same)
+        assert clipped[1, 0] == 30.0
+        assert clipped[1, 1] == 50.0
 
-    def test_no_warn_in_range(self, caplog):
+    def test_warning_on_extreme_outliers(self, caplog):
         from sklearn.preprocessing import MinMaxScaler
-        scaler = MinMaxScaler()
-        train  = np.random.rand(100, 4)
-        scaler.fit(train)
         import logging
+        scaler = MinMaxScaler()
+        train  = np.array([[0.0, 0.0], [1.0, 1.0]])
+        scaler.fit(train)
+        
+        # Moderate OOB (no log expected at < 10% threshold if that's the logic)
+        # Extreme OOB (> 10% or absolute distance)
+        extreme = np.array([[-100.0, 100.0]])
         with caplog.at_level(logging.WARNING):
-            check_scaler_bounds(train * 0.5 + 0.25, scaler)
-        assert "outside training range" not in caplog.text
+            clip_to_scaler_bounds(extreme, scaler)
+        assert "extreme values" in caplog.text

@@ -18,8 +18,22 @@ NORMAL_PROFILES = {
 
 FAULT_TYPES = ["cable_cut", "anchor_drag", "overheating", "insulation_failure"]
 
+# Mapping from simulator physical events to electrical fault classes
+CLASSIFICATION_MAP = {
+    "none":               0,  # "Normal"
+    "insulation_failure": 1,  # "Short Circuit"
+    "cable_cut":          2,  # "Open Circuit"
+    "overheating":        3,  # "High-Z / Degradation"
+    "anchor_drag":        3,  # "High-Z / Degradation" (Mechanical proxy)
+}
+
+CLASS_NAMES = ["Normal", "Short Circuit", "Open Circuit", "High-Impedance"]
+NUM_CLASSES = 4
+
 # ── model ─────────────────────────────────────────────────────────────────────
 FEATURES        = ["voltage", "current", "temperature", "vibration"]
+USE_DERIVED_FEATURES = False  # If True, feature_engineering.py will be invoked
+
 SEQ_LEN         = 60        # 60 timesteps for transformer sequence
 TRANSFORMER_HEADS  = 4
 TRANSFORMER_FF_DIM = 128

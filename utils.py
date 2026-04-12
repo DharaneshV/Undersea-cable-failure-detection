@@ -24,23 +24,25 @@ def make_sequences(data: np.ndarray, seq_len: int) -> np.ndarray:
     return np.array([data[i : i + seq_len] for i in range(n)])
 
 
-def check_scaler_bounds(data: np.ndarray, scaler) -> None:
+def clip_to_scaler_bounds(data: np.ndarray, scaler) -> np.ndarray:
     """
-    Warn when inference data falls outside the training scaler range.
-    Prevents silent extrapolation from MinMaxScaler.
+    Clips inference data to the Min/Max range seen during training.
+    Prevents the Scaler from extrapolating, which often produces
+    nonsensical inputs for the model during extreme sensor spikes.
     """
-    lo = scaler.data_min_
-    hi = scaler.data_max_
-    for feat_idx in range(data.shape[1]):
-        col = data[:, feat_idx]
-        if col.min() < lo[feat_idx] or col.max() > hi[feat_idx]:
+    lo, hi = scaler.data_min_, scaler.data_max_
+    
+    # Optional: Log warning if we're clipping a significant amount
+    # (e.g. more than 10% beyond the original range)
+    for i in range(data.shape[1]):
+        col_min, col_max = data[:, i].min(), data[:, i].max()
+        if col_min < lo[i] * 0.9 or col_max > hi[i] * 1.1:
             log.warning(
-                "Feature %d has values outside training range "
-                "[%.4f, %.4f] → [%.4f, %.4f]. "
-                "Scaler will extrapolate.",
-                feat_idx, lo[feat_idx], hi[feat_idx],
-                col.min(), col.max(),
+                "Feature %d has extreme values [%.4f, %.4f] outside training range [%.4f, %.4f]. Clipping.",
+                i, col_min, col_max, lo[i], hi[i]
             )
+            
+    return np.clip(data, lo, hi)
 
 
 def find_optimal_threshold(scores: np.ndarray, labels: np.ndarray) -> float:

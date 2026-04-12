@@ -21,14 +21,14 @@ function WarningIcon({ color }) {
 }
 
 function severityColor(sev) {
-  if (sev === 'Critical' || sev === 'High') return '#ff4757';
-  if (sev === 'Medium')                     return '#ffa502';
-  return '#ffa502';
+  if (sev === 'Critical' || sev === 'High') return 'var(--danger)';
+  if (sev === 'Medium')                     return 'var(--warn)';
+  return 'var(--warn)';
 }
 
 export default function FaultToast({ fault, onDismiss }) {
-  const sev      = fault?.Severity || 'High';
-  const sevCls   = SEVERITY_CLS[sev] || 'severity-critical';
+  const sev       = fault?.Severity || 'High';
+  const sevCls    = SEVERITY_CLS[sev] || 'severity-critical';
   const iconColor = severityColor(sev);
   const faultType = fault?.fault_type || 'Unknown';
   const location  = fault?.est_distance != null ? `${fault.est_distance} m` : '—';

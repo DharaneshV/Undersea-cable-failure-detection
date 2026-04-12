@@ -16,6 +16,10 @@ from pydantic import BaseModel, Field, validator
 from model import CableFaultDetector
 from config import SEQ_LEN, FEATURES, NORMAL_PROFILES
 from utils import ema
+from reports import ReportGenerator
+
+# In-memory storage for report links (for session duration)
+REPORTS_DB = {}
 
 limiter = Limiter(key_func=get_remote_address)
 logging.basicConfig(
@@ -159,6 +163,7 @@ async def predict_single(request: Request, reading: SensorReading):
         "threshold": detector.threshold,
         "is_anomaly": score > detector.threshold,
         "severity": severity_of(score, detector.threshold)[0],
+        "diagnosis": result["fault_diagnosis"].iloc[-1],
     }
 
 
@@ -194,6 +199,7 @@ async def predict_batch(request: Request, batch: BatchPredictionRequest):
             "anomaly_score": sc,
             "is_anomaly": sc > thr,
             "severity": severity_of(sc, thr)[0],
+            "diagnosis": row["fault_diagnosis"],
         })
     
     anomaly_count = sum(1 for p in predictions if p["is_anomaly"])
@@ -208,6 +214,54 @@ async def predict_batch(request: Request, batch: BatchPredictionRequest):
         "anomaly_count": anomaly_count,
         "processing_time": elapsed,
     }
+
+
+class ReportRequest(BaseModel):
+    fault_log: list
+    metadata: dict = {}
+    format: str = "pdf"  # "pdf" or "csv"
+
+@app.post("/report/generate")
+async def generate_report(request: ReportRequest):
+    """Generate a forensic report on the server and return a download ID."""
+    import uuid
+    report_id = str(uuid.uuid4())
+    os.makedirs("generated_reports", exist_ok=True)
+    
+    ext = "pdf" if request.format == "pdf" else "csv"
+    file_path = f"generated_reports/report_{report_id}.{ext}"
+    
+    # Add system context to metadata
+    full_meta = {
+        "deployment_id": "CABLE-ALPHA-9",
+        "threshold": float(detector.threshold),
+        "model_version": "2.1.0-transformer",
+        "source": request.metadata.get("selected_dataset", "Live Stream"),
+        **request.metadata
+    }
+
+    try:
+        if request.format == "pdf":
+            ReportGenerator.generate_pdf(request.fault_log, full_meta, file_path)
+        else:
+            ReportGenerator.generate_csv(request.fault_log, file_path)
+        
+        REPORTS_DB[report_id] = file_path
+        return {"report_id": report_id, "format": request.format}
+    except Exception as e:
+        log.error(f"Failed to generate report: {e}")
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+@app.get("/report/download/{report_id}")
+async def download_report(report_id: str):
+    """Download a previously generated report."""
+    from fastapi.responses import FileResponse
+    file_path = REPORTS_DB.get(report_id)
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Report not found or expired")
+    
+    filename = os.path.basename(file_path)
+    return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')
 
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×"):
@@ -255,7 +309,7 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
                 sev_label, sev_cls = severity_of(sc, thr)
                 fault_obj = {
                     "_idx": i, "ftype_raw": str(ftype), "Time": str(row["timestamp"])[:19],
-                    "fault_type": str(ftype).replace("_", " ").title(), "Severity": sev_label,
+                    "fault_type": row["fault_diagnosis"], "Severity": sev_label,
                     "anomaly_score": round(sc, 4), "est_distance": float(dist)
                 }
                 detected_faults.append(fault_obj)

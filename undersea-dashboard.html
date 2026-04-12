@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Undersea Cable Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@300;400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  :root{
+    --abyss:#020912;
+    --deep:#041322;
+    --mid:#071d33;
+    --surface:#0a2a4a;
+    --lift:#0d3560;
+    --bio:#00ffc8;
+    --bio-dim:#00b8a0;
+    --ocean:#00b8d4;
+    --ocean-dim:#007a8c;
+    --warn:#ffab40;
+    --danger:#ff4d6d;
+    --neutral:#2a5a70;
+    --txt:#c8f0f5;
+    --txt-sec:#6ba3b0;
+    --txt-muted:#3d6b78;
+    --card:rgba(4,19,34,0.88);
+    --border:rgba(0,184,212,0.14);
+    --border-bright:rgba(0,255,200,0.28);
+    --mono:'Space Mono',monospace;
+    --display:'Oxanium',sans-serif;
+  }
+
+  html{background:var(--abyss);color:var(--txt);font-family:var(--display);min-height:100%}
+
+  body{min-height:100vh;overflow-x:hidden;position:relative}
+
+  /* ── Ocean background layers ── */
+  .ocean-bg{
+    position:fixed;inset:0;z-index:0;
+    background:
+      linear-gradient(180deg,
+        #020912 0%,
+        #041322 18%,
+        #051a2e 35%,
+        #041628 55%,
+        #030f1e 75%,
+        #020b17 100%
+      );
+  }
+  .ocean-bg::before{
+    content:'';position:absolute;inset:0;
+    background:
+      radial-gradient(ellipse 60% 30% at 20% 40%, rgba(0,184,212,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 25% at 80% 60%, rgba(0,255,200,0.04) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 20% at 50% 90%, rgba(0,120,180,0.08) 0%, transparent 70%);
+    animation:caustics 12s ease-in-out infinite alternate;
+  }
+  @keyframes caustics{
+    0%{opacity:0.6;transform:scale(1)}
+    100%{opacity:1;transform:scale(1.05)}
+  }
+
+  /* depth bands */
+  .depth-bands{position:fixed;inset:0;z-index:0;pointer-events:none}
+  .depth-band{
+    position:absolute;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(0,184,212,0.08),transparent);
+  }
+
+  /* scan line */
+  .scan-line{
+    position:fixed;left:0;right:0;height:2px;z-index:1;pointer-events:none;
+    background:linear-gradient(90deg,transparent 0%,rgba(0,255,200,0.15) 30%,rgba(0,255,200,0.3) 50%,rgba(0,255,200,0.15) 70%,transparent 100%);
+    animation:scan 8s linear infinite;
+    opacity:0.6;
+  }
+  @keyframes scan{0%{top:-2px}100%{top:100%}}
+
+  /* particles */
+  .particles{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .particle{
+    position:absolute;border-radius:50%;
+    background:radial-gradient(circle,var(--bio) 0%,transparent 70%);
+    animation:drift linear infinite;
+  }
+  @keyframes drift{
+    0%{transform:translateY(0) translateX(0);opacity:0}
+    10%{opacity:1}
+    90%{opacity:0.6}
+    100%{transform:translateY(-100vh) translateX(var(--drift-x,20px));opacity:0}
+  }
+
+  /* ── Layout ── */
+  .app{position:relative;z-index:2;min-height:100vh;padding:0 0 40px}
+
+  /* ── Header ── */
+  .header{
+    padding:18px 28px 16px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    background:rgba(2,9,18,0.7);
+    backdrop-filter:blur(12px);
+    position:sticky;top:0;z-index:100;
+  }
+  .header-left{display:flex;align-items:center;gap:16px}
+  .sonar-icon{
+    width:40px;height:40px;border-radius:50%;
+    border:1.5px solid rgba(0,255,200,0.4);
+    display:flex;align-items:center;justify-content:center;
+    position:relative;
+  }
+  .sonar-icon svg{width:20px;height:20px}
+  .sonar-ring{
+    position:absolute;inset:-6px;border-radius:50%;
+    border:1px solid rgba(0,255,200,0.3);
+    animation:sonar-pulse 3s ease-out infinite;
+  }
+  .sonar-ring:nth-child(2){animation-delay:1s;border-color:rgba(0,255,200,0.15)}
+  @keyframes sonar-pulse{
+    0%{transform:scale(0.7);opacity:1}
+    100%{transform:scale(2);opacity:0}
+  }
+  .title-block{}
+  .title-main{
+    font-size:18px;font-weight:800;letter-spacing:-0.3px;
+    color:var(--bio);text-shadow:0 0 20px rgba(0,255,200,0.4);
+  }
+  .title-sub{
+    font-size:10px;font-weight:400;letter-spacing:2px;
+    color:var(--txt-muted);margin-top:2px;font-family:var(--mono);
+  }
+  .header-right{display:flex;align-items:center;gap:12px}
+  .status-pill{
+    display:flex;align-items:center;gap:7px;
+    padding:6px 14px;border-radius:999px;
+    border:1px solid rgba(0,255,200,0.2);
+    background:rgba(0,255,200,0.06);
+    font-size:10px;font-weight:700;letter-spacing:1.5px;
+    color:var(--bio);font-family:var(--mono);
+  }
+  .live-dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--bio);
+    animation:live-pulse 2s ease-in-out infinite;
+    box-shadow:0 0 6px var(--bio);
+  }
+  @keyframes live-pulse{
+    0%,100%{opacity:1;transform:scale(1)}
+    50%{opacity:0.5;transform:scale(0.8)}
+  }
+  .depth-badge{
+    font-family:var(--mono);font-size:11px;
+    color:var(--txt-sec);
+    padding:6px 12px;border-radius:999px;
+    border:1px solid var(--border);
+    background:rgba(7,29,51,0.5);
+  }
+  .clock{
+    font-family:var(--mono);font-size:11px;color:var(--txt-sec);
+    padding:6px 12px;border-radius:999px;
+    border:1px solid var(--border);
+    background:rgba(7,29,51,0.5);
+    min-width:110px;text-align:center;
+  }
+
+  /* ── Tab bar ── */
+  .tab-bar{
+    display:flex;gap:2px;
+    padding:12px 28px 0;
+    border-bottom:1px solid var(--border);
+    background:rgba(2,9,18,0.5);
+  }
+  .tab-btn{
+    padding:10px 20px;
+    font-size:12px;font-weight:600;letter-spacing:0.5px;
+    color:var(--txt-muted);cursor:pointer;
+    border:none;background:transparent;
+    border-radius:8px 8px 0 0;
+    transition:all 0.2s;position:relative;
+    font-family:var(--display);
+  }
+  .tab-btn:hover{color:var(--txt-sec)}
+  .tab-btn.active{
+    color:var(--bio);background:rgba(0,255,200,0.05);
+    border:1px solid var(--border-bright);border-bottom:none;
+  }
+  .tab-btn.active::after{
+    content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;
+    background:rgba(2,9,18,0.9);
+  }
+
+  /* ── Main grid ── */
+  .main{padding:20px 28px;display:flex;flex-direction:column;gap:20px}
+
+  /* ── Section headers ── */
+  .sec-label{
+    font-size:9px;font-weight:700;letter-spacing:2.5px;
+    color:var(--txt-muted);display:flex;align-items:center;gap:8px;
+    margin-bottom:12px;font-family:var(--mono);
+  }
+  .sec-label::before{
+    content:'';width:20px;height:1px;
+    background:linear-gradient(90deg,var(--ocean),transparent);
+  }
+  .sec-label::after{
+    content:'';flex:1;height:1px;
+    background:linear-gradient(90deg,transparent,var(--border));
+  }
+
+  /* ── Cards ── */
+  .glass-card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:16px;
+    backdrop-filter:blur(20px);
+  }
+  .glass-card:hover{border-color:rgba(0,184,212,0.25)}
+
+  /* ── Metric row ── */
+  .metric-row{display:grid;grid-template-columns:180px 1fr;gap:16px}
+
+  /* Health gauge */
+  .health-card{
+    padding:20px 16px;text-align:center;
+    background:var(--card);border:1px solid var(--border);border-radius:16px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    position:relative;overflow:hidden;
+  }
+  .health-card::before{
+    content:'';position:absolute;bottom:0;left:0;right:0;height:80px;
+    background:radial-gradient(ellipse at 50% 100%,rgba(0,255,200,0.08),transparent 70%);
+  }
+  .gauge-svg{width:120px;height:70px}
+  .gauge-value{font-size:32px;font-weight:800;color:var(--bio);font-family:var(--mono);line-height:1;text-shadow:0 0 16px rgba(0,255,200,0.5)}
+  .gauge-label{font-size:9px;letter-spacing:2px;color:var(--txt-muted);font-family:var(--mono)}
+  .gauge-status{font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--bio)}
+
+  /* metric cards */
+  .metrics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .metric-card{
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:16px;position:relative;overflow:hidden;
+    transition:transform 0.2s,border-color 0.2s;cursor:default;
+  }
+  .metric-card:hover{transform:translateY(-2px);border-color:rgba(0,184,212,0.3)}
+  .metric-card::after{
+    content:'';position:absolute;bottom:0;left:0;right:0;height:3px;
+    border-radius:0 0 12px 12px;
+  }
+  .metric-card.volt::after{background:linear-gradient(90deg,#378add,#5ba3f5)}
+  .metric-card.curr::after{background:linear-gradient(90deg,#00ffc8,#00b8a0)}
+  .metric-card.temp::after{background:linear-gradient(90deg,#ffab40,#ff7043)}
+  .metric-card.vib::after{background:linear-gradient(90deg,#d4537e,#ff4d6d)}
+  .metric-card.fault::after{background:linear-gradient(90deg,#ff4d6d,#ff6b6b)}
+  .metric-card.fault{border-color:rgba(255,77,109,0.3);animation:fault-pulse 2s ease-in-out infinite}
+  @keyframes fault-pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(255,77,109,0)}
+    50%{box-shadow:0 0 0 6px rgba(255,77,109,0.08)}
+  }
+  .m-icon{margin-bottom:8px}
+  .m-icon svg{width:16px;height:16px}
+  .m-label{font-size:9px;letter-spacing:1.5px;color:var(--txt-muted);display:block;margin-bottom:6px;font-family:var(--mono)}
+  .m-value{font-size:26px;font-weight:800;font-family:var(--mono);line-height:1;color:var(--txt)}
+  .m-unit{font-size:11px;color:var(--txt-muted);margin-left:3px}
+  .m-delta{font-size:10px;margin-top:5px;font-family:var(--mono);display:flex;align-items:center;gap:4px}
+  .m-delta.up{color:#ff6b6b}
+  .m-delta.dn{color:var(--bio)}
+  .m-bar{position:absolute;bottom:3px;left:0;height:3px;border-radius:0;transition:width 0.6s cubic-bezier(0.4,0,0.2,1)}
+
+  /* ── Cable graphic ── */
+  .cable-wrap{
+    background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:18px 20px 14px;overflow:hidden;position:relative;
+  }
+  .cable-wrap::before{
+    content:'';position:absolute;bottom:0;left:0;right:0;height:40px;
+    background:linear-gradient(180deg,transparent,rgba(0,60,90,0.3));
+    pointer-events:none;
+  }
+  .seabed{
+    position:absolute;bottom:0;left:0;right:0;height:20px;
+    background:linear-gradient(180deg,rgba(0,40,70,0.4),rgba(0,30,50,0.7));
+    border-radius:0 0 16px 16px;
+  }
+
+  /* ── Charts ── */
+  .charts-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .chart-card{
+    background:var(--card);border:1px solid var(--border);border-radius:14px;
+    padding:16px;
+  }
+  .chart-title{font-size:10px;letter-spacing:1px;color:var(--txt-sec);font-family:var(--mono);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+  .chart-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+  .chart-area{height:100px;position:relative;overflow:hidden}
+
+  /* ── Fault log ── */
+  .fault-log{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .fault-log-header{
+    display:grid;grid-template-columns:140px 1fr 90px 100px 110px 80px;
+    padding:10px 16px;
+    border-bottom:1px solid var(--border);
+    font-size:9px;letter-spacing:1.5px;color:var(--txt-muted);font-family:var(--mono);
+  }
+  .fault-row{
+    display:grid;grid-template-columns:140px 1fr 90px 100px 110px 80px;
+    padding:10px 16px;align-items:center;
+    border-bottom:1px solid rgba(0,184,212,0.05);
+    transition:background 0.15s;
+    animation:row-in 0.3s ease;
+  }
+  @keyframes row-in{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+  .fault-row:hover{background:rgba(0,184,212,0.04)}
+  .fault-row:last-child{border-bottom:none}
+  .f-time{font-family:var(--mono);font-size:11px;color:var(--txt-sec)}
+  .f-type{font-size:12px;font-weight:600;color:var(--txt)}
+  .f-score{font-family:var(--mono);font-size:11px;color:var(--txt-sec)}
+  .f-dist{font-family:var(--mono);font-size:11px;color:var(--ocean)}
+  .sev-badge{
+    display:inline-block;padding:3px 8px;border-radius:6px;
+    font-size:9px;font-weight:700;letter-spacing:0.8px;font-family:var(--mono);
+  }
+  .sev-critical{background:rgba(255,77,109,0.15);color:#ff8fab;border:1px solid rgba(255,77,109,0.3)}
+  .sev-high{background:rgba(255,107,53,0.12);color:#ff9970;border:1px solid rgba(255,107,53,0.25)}
+  .sev-medium{background:rgba(255,171,64,0.12);color:#ffc46e;border:1px solid rgba(255,171,64,0.25)}
+  .sev-low{background:rgba(0,255,200,0.08);color:#7affd4;border:1px solid rgba(0,255,200,0.2)}
+
+  /* export btn */
+  .export-btn{
+    padding:8px 18px;border-radius:8px;
+    border:1px solid rgba(0,255,200,0.3);
+    background:rgba(0,255,200,0.07);
+    color:var(--bio);font-size:11px;font-weight:600;letter-spacing:0.5px;
+    cursor:pointer;font-family:var(--display);
+    transition:all 0.18s;display:flex;align-items:center;gap:6px;
+  }
+  .export-btn:hover{background:rgba(0,255,200,0.14);border-color:rgba(0,255,200,0.5)}
+  .export-btn svg{width:14px;height:14px}
+
+  /* alert banner */
+  .alert-banner{
+    border-radius:12px;padding:14px 18px;
+    display:flex;align-items:flex-start;gap:14px;
+    border:1px solid rgba(255,77,109,0.3);border-left:4px solid #ff4d6d;
+    background:linear-gradient(135deg,rgba(255,77,109,0.08),rgba(255,77,109,0.02));
+    animation:alert-in 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes alert-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+  .alert-icon{
+    width:36px;height:36px;border-radius:50%;flex-shrink:0;
+    background:rgba(255,77,109,0.12);border:1px solid rgba(255,77,109,0.3);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .alert-icon svg{width:16px;height:16px}
+  .alert-title{font-size:13px;font-weight:700;color:#ff8fab;margin-bottom:3px}
+  .alert-detail{font-size:11px;color:var(--txt-sec);font-family:var(--mono)}
+  .alert-progress{
+    position:absolute;bottom:0;left:0;height:2px;border-radius:0 0 0 8px;
+    background:linear-gradient(90deg,#ff4d6d,rgba(255,77,109,0.3));
+    animation:deplete 4s linear forwards;
+  }
+  @keyframes deplete{from{width:100%}to{width:0%}}
+
+  /* depth markers */
+  .depth-ruler{
+    display:flex;flex-direction:column;gap:0;
+    font-family:var(--mono);font-size:9px;color:var(--txt-muted);
+    padding-right:8px;min-width:36px;
+  }
+  .depth-mark{flex:1;display:flex;align-items:center;justify-content:flex-end;opacity:0.5}
+
+  /* model info */
+  .model-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .stat-box{
+    background:rgba(7,29,51,0.5);border:1px solid var(--border);border-radius:10px;
+    padding:14px;text-align:center;
+  }
+  .stat-num{font-size:22px;font-weight:800;font-family:var(--mono);color:var(--bio)}
+  .stat-lbl{font-size:9px;letter-spacing:1.5px;color:var(--txt-muted);margin-top:4px;font-family:var(--mono)}
+
+  /* arch block */
+  .arch-row{display:flex;flex-direction:column;gap:0;align-items:center}
+  .arch-block{
+    background:rgba(7,29,51,0.6);border:1px solid var(--border);border-radius:10px;
+    padding:10px 24px;width:100%;max-width:380px;
+    text-align:center;
+  }
+  .arch-block.accent-bio{border-color:rgba(0,255,200,0.3)}
+  .arch-block.accent-ocean{border-color:rgba(0,184,212,0.3)}
+  .arch-block.accent-warn{border-color:rgba(255,171,64,0.3)}
+  .arch-title{font-size:12px;font-weight:600;color:var(--txt);margin-bottom:2px}
+  .arch-sub{font-size:10px;color:var(--txt-muted);font-family:var(--mono)}
+  .arch-arrow{font-size:16px;color:var(--txt-muted);line-height:1.4;text-align:center}
+
+  /* scrollbar */
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(0,184,212,0.2);border-radius:3px}
+</style>
+
+<!-- Ocean background -->
+<div class="ocean-bg"></div>
+<div class="depth-bands" id="depthBands"></div>
+<div class="scan-line"></div>
+<div class="particles" id="particles"></div>
+
+<div class="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <div class="sonar-icon">
+        <div class="sonar-ring"></div>
+        <div class="sonar-ring"></div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#00ffc8" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2a10 10 0 0 1 0 20A10 10 0 0 1 12 2"/>
+          <path d="M12 6a6 6 0 0 1 0 12"/>
+        </svg>
+      </div>
+      <div class="title-block">
+        <div class="title-main">Undersea Cable Monitor</div>
+        <div class="title-sub">Conv-Transformer AE &nbsp;&middot;&nbsp; TDR Localisation &nbsp;&middot;&nbsp; Real-time XAI</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="depth-badge" id="depthBadge">DEPTH &nbsp; 3,842 m</div>
+      <div class="clock" id="clock">--:--:-- UTC</div>
+      <div class="status-pill"><div class="live-dot"></div>SYSTEM LIVE</div>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab(this,'live')">Sonar Monitor</button>
+    <button class="tab-btn" onclick="switchTab(this,'upload')">Data Upload</button>
+    <button class="tab-btn" onclick="switchTab(this,'analytics')">Analytics</button>
+    <button class="tab-btn" onclick="switchTab(this,'model')">Model Intel</button>
+  </div>
+
+  <div class="main">
+
+    <!-- Alert -->
+    <div class="alert-banner" style="position:relative;overflow:hidden">
+      <div class="alert-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="2" stroke-linecap="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <div>
+        <div class="alert-title">FAULT DETECTED &mdash; ANCHOR DRAG &nbsp; <span class="sev-badge sev-critical">CRITICAL</span></div>
+        <div class="alert-detail">Score: 0.08741 &nbsp;/&nbsp; Threshold: 0.01823 &nbsp;&nbsp;|&nbsp;&nbsp; Ratio: 4.79&times; &nbsp;&nbsp;|&nbsp;&nbsp; Anomaly driven by: Vibration 58%, Voltage 31%</div>
+      </div>
+      <div class="alert-progress"></div>
+    </div>
+
+    <!-- Metrics -->
+    <div>
+      <div class="sec-label">SENSOR TELEMETRY</div>
+      <div class="metric-row">
+        <!-- Health gauge -->
+        <div class="health-card">
+          <div class="gauge-label">HULL INTEGRITY</div>
+          <svg class="gauge-svg" viewBox="0 0 120 70">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#00ffc8"/>
+                <stop offset="100%" stop-color="#00b8d4"/>
+              </linearGradient>
+            </defs>
+            <path d="M10 65 A50 50 0 0 1 110 65" fill="none" stroke="rgba(0,184,212,0.12)" stroke-width="10" stroke-linecap="round"/>
+            <path d="M10 65 A50 50 0 0 1 110 65" fill="none" stroke="url(#gaugeGrad)" stroke-width="10" stroke-linecap="round" stroke-dasharray="157" stroke-dashoffset="47" style="transition:stroke-dashoffset 1s ease"/>
+            <text x="60" y="58" text-anchor="middle" font-family="Space Mono,monospace" font-size="18" font-weight="700" fill="#00ffc8">72%</text>
+          </svg>
+          <div class="gauge-status">STABLE</div>
+        </div>
+
+        <!-- Sensor cards -->
+        <div class="metrics-grid">
+          <div class="metric-card volt">
+            <div class="m-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#378add" stroke-width="2" stroke-linecap="round">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+            </div>
+            <span class="m-label">VOLTAGE</span>
+            <div><span class="m-value" id="v-val">218.4</span><span class="m-unit">V</span></div>
+            <div class="m-delta dn">&#9660; 1.2 from baseline</div>
+          </div>
+          <div class="metric-card curr">
+            <div class="m-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#00ffc8" stroke-width="2" stroke-linecap="round">
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                <polyline points="17 6 23 6 23 12"/>
+              </svg>
+            </div>
+            <span class="m-label">CURRENT</span>
+            <div><span class="m-value" id="c-val">5.83</span><span class="m-unit">A</span></div>
+            <div class="m-delta up">&#9650; 0.8 from baseline</div>
+          </div>
+          <div class="metric-card temp">
+            <div class="m-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ffab40" stroke-width="2" stroke-linecap="round">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+              </svg>
+            </div>
+            <span class="m-label">TEMPERATURE</span>
+            <div><span class="m-value" id="t-val">41.2</span><span class="m-unit">°C</span></div>
+            <div class="m-delta up">&#9650; 3.4 above normal</div>
+          </div>
+          <div class="metric-card vib fault">
+            <div class="m-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="2" stroke-linecap="round">
+                <path d="M2 12h2M6 8v8M10 4v16M14 6v12M18 8v8M22 12h-2"/>
+              </svg>
+            </div>
+            <span class="m-label">VIBRATION</span>
+            <div><span class="m-value" id="vi-val">1.847</span><span class="m-unit">g</span></div>
+            <div class="m-delta up" style="color:#ff8fab">&#9650; ANOMALY &times;4.79</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cable graphic -->
+    <div>
+      <div class="sec-label">CABLE ROUTE &mdash; FAULT LOCALISATION</div>
+      <div class="cable-wrap" style="height:160px;position:relative">
+        <svg width="100%" height="100%" viewBox="0 0 900 130" preserveAspectRatio="xMidYMid meet" style="position:relative;z-index:2">
+          <defs>
+            <linearGradient id="cableGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#00ffc8" stop-opacity="0.9"/>
+              <stop offset="30%" stop-color="#00b8d4" stop-opacity="0.7"/>
+              <stop offset="70%" stop-color="#00b8d4" stop-opacity="0.7"/>
+              <stop offset="100%" stop-color="#00ffc8" stop-opacity="0.9"/>
+            </linearGradient>
+            <linearGradient id="seabedGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#0a2040" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#041020" stop-opacity="0.9"/>
+            </linearGradient>
+            <filter id="bioGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <filter id="strongGlow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+
+          <!-- Seabed terrain -->
+          <path d="M0,110 Q60,95 120,108 Q180,118 240,105 Q300,92 360,110 Q420,120 480,108 Q540,96 600,112 Q660,122 720,106 Q780,92 840,110 Q870,118 900,108 L900,130 L0,130 Z" fill="url(#seabedGrad)"/>
+          <!-- Depth dots on seabed -->
+          <g fill="rgba(0,184,212,0.2)" font-family="Space Mono,monospace" font-size="7" fill-opacity="0.4">
+            <line x1="70" y1="60" x2="70" y2="108" stroke="rgba(0,184,212,0.07)" stroke-width="1" stroke-dasharray="3,4"/>
+            <text x="66" y="58" fill="rgba(0,184,212,0.3)" text-anchor="middle">0m</text>
+            <line x1="300" y1="60" x2="300" y2="92" stroke="rgba(0,184,212,0.07)" stroke-width="1" stroke-dasharray="3,4"/>
+            <text x="296" y="58" fill="rgba(0,184,212,0.3)" text-anchor="middle">-40m</text>
+            <line x1="600" y1="60" x2="600" y2="112" stroke="rgba(0,184,212,0.07)" stroke-width="1" stroke-dasharray="3,4"/>
+            <text x="596" y="58" fill="rgba(0,184,212,0.3)" text-anchor="middle">-80m</text>
+            <line x1="830" y1="60" x2="830" y2="106" stroke="rgba(0,184,212,0.07)" stroke-width="1" stroke-dasharray="3,4"/>
+            <text x="826" y="58" fill="rgba(0,184,212,0.3)" text-anchor="middle">-20m</text>
+          </g>
+
+          <!-- Cable shadow -->
+          <line x1="70" y1="78" x2="830" y2="78" stroke="rgba(0,184,212,0.12)" stroke-width="8" stroke-linecap="round"/>
+          <!-- Main cable -->
+          <line id="cable-main" x1="70" y1="76" x2="830" y2="76" stroke="url(#cableGrad)" stroke-width="4" stroke-linecap="round" filter="url(#bioGlow)"/>
+
+          <!-- Animated data packets (normal) -->
+          <circle r="4" fill="#00ffc8" opacity="0.9" filter="url(#bioGlow)">
+            <animateMotion dur="3s" repeatCount="indefinite" begin="0s">
+              <mpath href="#packetPath"/>
+            </animateMotion>
+          </circle>
+          <circle r="3" fill="#00b8d4" opacity="0.6" filter="url(#bioGlow)">
+            <animateMotion dur="3s" repeatCount="indefinite" begin="1s">
+              <mpath href="#packetPath"/>
+            </animateMotion>
+          </circle>
+          <circle r="2.5" fill="#00ffc8" opacity="0.4">
+            <animateMotion dur="3s" repeatCount="indefinite" begin="2s">
+              <mpath href="#packetPath"/>
+            </animateMotion>
+          </circle>
+          <path id="packetPath" d="M70,76 L830,76" fill="none"/>
+
+          <!-- Station A -->
+          <rect x="52" y="62" width="36" height="28" rx="6" fill="rgba(0,255,200,0.07)" stroke="rgba(0,255,200,0.5)" stroke-width="1.5" filter="url(#bioGlow)"/>
+          <text x="70" y="80" text-anchor="middle" fill="#00ffc8" font-family="Space Mono,monospace" font-size="7" font-weight="700">STA-A</text>
+          <text x="70" y="52" text-anchor="middle" fill="rgba(0,184,212,0.4)" font-family="Space Mono,monospace" font-size="7">0 km</text>
+
+          <!-- Repeater nodes -->
+          <g fill="rgba(0,184,212,0.08)" stroke="rgba(0,184,212,0.4)" stroke-width="1">
+            <rect x="200" y="68" width="28" height="16" rx="4"/>
+            <text x="214" y="79" text-anchor="middle" fill="rgba(0,184,212,0.7)" font-family="Space Mono,monospace" font-size="6">R1</text>
+            <text x="214" y="62" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-family="Space Mono,monospace" font-size="6">760m</text>
+          </g>
+          <g fill="rgba(0,184,212,0.08)" stroke="rgba(0,184,212,0.4)" stroke-width="1">
+            <rect x="390" y="68" width="28" height="16" rx="4"/>
+            <text x="404" y="79" text-anchor="middle" fill="rgba(0,184,212,0.7)" font-family="Space Mono,monospace" font-size="6">R2</text>
+            <text x="404" y="62" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-family="Space Mono,monospace" font-size="6">1520m</text>
+          </g>
+          <g fill="rgba(0,184,212,0.08)" stroke="rgba(0,184,212,0.4)" stroke-width="1">
+            <rect x="585" y="68" width="28" height="16" rx="4"/>
+            <text x="599" y="79" text-anchor="middle" fill="rgba(0,184,212,0.7)" font-family="Space Mono,monospace" font-size="6">R3</text>
+            <text x="599" y="62" text-anchor="middle" fill="rgba(255,255,255,0.2)" font-family="Space Mono,monospace" font-size="6">2280m</text>
+          </g>
+
+          <!-- Fault marker: anchor drag -->
+          <circle cx="480" cy="76" r="9" fill="#ff4d6d" opacity="0.9" filter="url(#strongGlow)">
+            <animate attributeName="r" values="7;14;7" dur="1.6s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="1;0.5;1" dur="1.6s" repeatCount="indefinite"/>
+          </circle>
+          <!-- outer ring -->
+          <circle cx="480" cy="76" r="18" fill="none" stroke="#ff4d6d" stroke-width="1" opacity="0.3">
+            <animate attributeName="r" values="10;26;10" dur="1.6s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.5;0;0.5" dur="1.6s" repeatCount="indefinite"/>
+          </circle>
+          <text x="480" y="58" text-anchor="middle" fill="#ff8fab" font-family="Space Mono,monospace" font-size="8" font-weight="700">ANCHOR DRAG</text>
+          <line x1="480" y1="60" x2="480" y2="67" stroke="#ff4d6d" stroke-width="1" opacity="0.5" stroke-dasharray="2,2"/>
+          <text x="480" y="96" text-anchor="middle" fill="rgba(255,77,109,0.6)" font-family="Space Mono,monospace" font-size="7">1,843 m</text>
+
+          <!-- Station B -->
+          <rect x="812" y="62" width="36" height="28" rx="6" fill="rgba(0,255,200,0.07)" stroke="rgba(0,255,200,0.5)" stroke-width="1.5" filter="url(#bioGlow)"/>
+          <text x="830" y="80" text-anchor="middle" fill="#00ffc8" font-family="Space Mono,monospace" font-size="7" font-weight="700">STA-B</text>
+          <text x="830" y="52" text-anchor="middle" fill="rgba(0,184,212,0.4)" font-family="Space Mono,monospace" font-size="7">3000 m</text>
+        </svg>
+        <div class="seabed"></div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div>
+      <div class="sec-label">SENSOR WAVEFORMS</div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title"><div class="chart-dot" style="background:#378add"></div>Voltage &amp; current</div>
+          <div class="chart-area"><canvas id="voltChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title"><div class="chart-dot" style="background:#ffab40"></div>Temperature &amp; vibration</div>
+          <div class="chart-area"><canvas id="tempChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Anomaly score chart (full width) -->
+    <div class="chart-card" style="border-radius:14px">
+      <div class="chart-title" style="justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:6px"><div class="chart-dot" style="background:#b39dff"></div>Anomaly reconstruction score</div>
+        <span style="font-size:9px;color:var(--txt-muted);font-family:var(--mono)">THRESHOLD: 0.01823</span>
+      </div>
+      <div class="chart-area" style="height:90px"><canvas id="anomalyChart"></canvas></div>
+    </div>
+
+    <!-- Fault log -->
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="sec-label" style="margin:0">FAULT EVENT LOG</div>
+        <button class="export-btn" onclick="exportCSV()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV
+        </button>
+      </div>
+      <div class="fault-log">
+        <div class="fault-log-header">
+          <span>TIMESTAMP</span><span>FAULT TYPE</span><span>SEVERITY</span><span>SCORE</span><span>DISTANCE</span><span>XAI</span>
+        </div>
+        <div id="faultLog"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+const FAULTS=[
+  {t:'2025-01-01 09:14:32',type:'Anchor drag',sev:'critical',score:'0.08741',dist:'1,843 m',xai:'Vib 58%'},
+  {t:'2025-01-01 08:47:11',type:'Insulation failure',sev:'high',score:'0.04312',dist:'2,107 m',xai:'Volt 72%'},
+  {t:'2025-01-01 07:22:58',type:'Overheating',sev:'medium',score:'0.02947',dist:'891 m',xai:'Temp 65%'},
+  {t:'2025-01-01 06:05:44',type:'Cable cut',sev:'critical',score:'0.09123',dist:'2,654 m',xai:'Curr 81%'},
+  {t:'2025-01-01 04:33:19',type:'Anchor drag',sev:'low',score:'0.02104',dist:'445 m',xai:'Vib 44%'},
+];
+const SEV_MAP={critical:'sev-critical',high:'sev-high',medium:'sev-medium',low:'sev-low'};
+
+function renderFaultLog(){
+  const el=document.getElementById('faultLog');
+  el.innerHTML=FAULTS.map(f=>`
+    <div class="fault-row">
+      <span class="f-time">${f.t}</span>
+      <span class="f-type">${f.type}</span>
+      <span><span class="sev-badge ${SEV_MAP[f.sev]}">${f.sev.toUpperCase()}</span></span>
+      <span class="f-score">${f.score}</span>
+      <span class="f-dist">${f.dist}</span>
+      <span style="font-size:10px;color:var(--txt-muted);font-family:var(--mono)">${f.xai}</span>
+    </div>
+  `).join('');
+}
+renderFaultLog();
+
+function exportCSV(){
+  const rows=[['Timestamp','Fault Type','Severity','Score','Distance','XAI'],...FAULTS.map(f=>[f.t,f.type,f.sev,f.score,f.dist,f.xai])];
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='fault_log.csv';a.click();
+}
+
+function switchTab(btn,tab){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function mkParticles(){
+  const c=document.getElementById('particles');
+  for(let i=0;i<28;i++){
+    const p=document.createElement('div');
+    p.className='particle';
+    const sz=Math.random()*3+1;
+    const dur=Math.random()*18+12;
+    const drift=(Math.random()-0.5)*60;
+    Object.assign(p.style,{
+      width:sz+'px',height:sz+'px',opacity:(Math.random()*0.4+0.1),
+      left:(Math.random()*100)+'%',top:(Math.random()*100+100)+'%',
+      '--drift-x':drift+'px',
+      animationDuration:dur+'s',
+      animationDelay:(Math.random()*-20)+'s',
+    });
+    c.appendChild(p);
+  }
+}
+mkParticles();
+
+function mkDepthBands(){
+  const c=document.getElementById('depthBands');
+  for(let i=0;i<8;i++){
+    const b=document.createElement('div');
+    b.className='depth-band';
+    b.style.top=(i*12+5)+'%';
+    c.appendChild(b);
+  }
+}
+mkDepthBands();
+
+function tick(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  document.getElementById('clock').textContent=`${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`;
+}
+tick();setInterval(tick,1000);
+
+function animMetrics(){
+  const vEl=document.getElementById('v-val');
+  const cEl=document.getElementById('c-val');
+  const tEl=document.getElementById('t-val');
+  const viEl=document.getElementById('vi-val');
+  setInterval(()=>{
+    vEl.textContent=(218+Math.random()*4-2).toFixed(1);
+    cEl.textContent=(5.8+Math.random()*0.4).toFixed(2);
+    tEl.textContent=(41+Math.random()*2).toFixed(1);
+    viEl.textContent=(1.8+Math.random()*0.3).toFixed(3);
+  },1800);
+}
+animMetrics();
+
+const N=60;
+function makeData(base,noise,spike,spikeAt){
+  return Array.from({length:N},(_,i)=>{
+    let v=base+Math.sin(i/6)*noise*0.5+Math.random()*noise;
+    if(spikeAt&&i>40)v+=spike*(i-40)/20;
+    return v;
+  });
+}
+const labels=Array.from({length:N},(_,i)=>i);
+const chartOpts=(color)=>({
+  type:'line',
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    animation:false,
+    plugins:{legend:{display:false},tooltip:{enabled:false}},
+    scales:{
+      x:{display:false},
+      y:{display:false,grid:{display:false}}
+    },
+    elements:{point:{radius:0}},
+  }
+});
+
+function mkGrad(ctx,color,alpha=0.15){
+  const g=ctx.createLinearGradient(0,0,0,100);
+  g.addColorStop(0,color.replace(')',`,${alpha})`).replace('rgb','rgba'));
+  g.addColorStop(1,color.replace(')',',0)').replace('rgb','rgba'));
+  return g;
+}
+
+window.addEventListener('load',()=>{
+  const voltCtx=document.getElementById('voltChart').getContext('2d');
+  new Chart(voltCtx,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {data:makeData(218,3,0,null),borderColor:'#378add',borderWidth:1.5,fill:true,
+         backgroundColor:(ctx)=>{const g=ctx.chart.ctx.createLinearGradient(0,0,0,100);g.addColorStop(0,'rgba(55,138,221,0.18)');g.addColorStop(1,'rgba(55,138,221,0)');return g},tension:0.4},
+        {data:makeData(5.8,0.4,0.8,true),borderColor:'#00ffc8',borderWidth:1.2,fill:false,tension:0.4},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{x:{display:false},y:{display:false}},
+      elements:{point:{radius:0}}}
+  });
+
+  const tempCtx=document.getElementById('tempChart').getContext('2d');
+  new Chart(tempCtx,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {data:makeData(38,1.5,3,true),borderColor:'#ffab40',borderWidth:1.5,fill:true,
+         backgroundColor:(ctx)=>{const g=ctx.chart.ctx.createLinearGradient(0,0,0,100);g.addColorStop(0,'rgba(255,171,64,0.15)');g.addColorStop(1,'rgba(255,171,64,0)');return g},tension:0.4},
+        {data:makeData(0.3,0.15,1.5,true),borderColor:'#ff4d6d',borderWidth:1.2,fill:false,tension:0.4},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{x:{display:false},y:{display:false}},
+      elements:{point:{radius:0}}}
+  });
+
+  const anomalyCtx=document.getElementById('anomalyChart').getContext('2d');
+  const anomalyData=makeData(0.008,0.004,0.08,true);
+  const thr=0.01823;
+  new Chart(anomalyCtx,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        data:anomalyData,
+        borderColor:(ctx)=>{
+          const val=ctx.raw||0;
+          return val>thr?'#ff4d6d':'#7f77dd';
+        },
+        segment:{
+          borderColor:(ctx)=>ctx.p0.parsed.y>thr?'#ff4d6d':'#7f77dd',
+        },
+        fill:true,
+        backgroundColor:(ctx)=>{const g=ctx.chart.ctx.createLinearGradient(0,0,0,90);g.addColorStop(0,'rgba(127,119,221,0.2)');g.addColorStop(1,'rgba(127,119,221,0)');return g},
+        borderWidth:1.8,tension:0.4,
+      },{
+        data:Array(N).fill(thr),
+        borderColor:'rgba(255,77,109,0.5)',borderWidth:1,
+        borderDash:[4,4],fill:false,pointRadius:0,
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{x:{display:false},y:{display:false,min:0}},
+      elements:{point:{radius:0}}}
+  });
+});
+</script>
