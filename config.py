@@ -41,12 +41,12 @@ TRANSFORMER_BLOCKS = 2
 LSTM_UNITS      = 64        # encoder outer layer units
 LATENT_UNITS    = 32        # bottleneck units
 DROPOUT_RATE    = 0.20      # applied after each LSTM layer
-EPOCHS          = 50
+EPOCHS          = 20
 BATCH_SIZE      = 64
 THRESHOLD_PCT   = 95        # percentile of validation reconstruction error
 
 # fraction of normal data held-out for threshold calibration (not trained on)
-THRESHOLD_VAL_SPLIT = 0.15
+THRESHOLD_VAL_SPLIT = 0.05
 
 # ── dashboard colours ─────────────────────────────────────────────────────────
 FAULT_COLORS = {

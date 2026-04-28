@@ -144,7 +144,15 @@ class CableFaultDetector:
 
     def train(self, df: pd.DataFrame, use_optimal_threshold: bool = False) -> None:
         normal_df = df[df["label"] == 0].reset_index(drop=True)
-        split_at  = int(len(normal_df) * (1 - THRESHOLD_VAL_SPLIT))
+        
+        min_normal_for_cal = SEQ_LEN + 100
+        if len(normal_df) < min_normal_for_cal:
+            cal_split = 0.0
+            log.warning(f"Only {len(normal_df)} normal samples - using reconstruction error for threshold")
+        else:
+            cal_split = THRESHOLD_VAL_SPLIT
+            
+        split_at  = int(len(normal_df) * (1 - cal_split))
         self._scale(normal_df.iloc[:split_at], fit=True)
         
         X = make_sequences(self._scale(df), SEQ_LEN)
@@ -154,11 +162,17 @@ class CableFaultDetector:
         callbacks = [EarlyStopping(monitor="val_loss", patience=7, restore_best_weights=True)]
         self.model.fit(X, {"reconstruction": X, "classification": y_cls}, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_split=0.15, callbacks=callbacks, verbose=1)
 
-        cal_df = normal_df.iloc[split_at:]
-        X_cal = make_sequences(self._scale(cal_df), SEQ_LEN)
-        X_cal_pred, _ = self.model.predict(X_cal, verbose=0)
-        cal_errors = np.mean(np.abs(X_cal - X_cal_pred), axis=(1, 2))
-        self.threshold = float(np.percentile(cal_errors, THRESHOLD_PCT)) if not use_optimal_threshold else find_optimal_threshold(cal_errors, np.zeros(len(cal_errors)))
+        if len(normal_df) >= min_normal_for_cal:
+            cal_df = normal_df.iloc[split_at:]
+            X_cal = make_sequences(self._scale(cal_df), SEQ_LEN)
+            X_cal_pred, _ = self.model.predict(X_cal, verbose=0)
+            cal_errors = np.mean(np.abs(X_cal - X_cal_pred), axis=(1, 2))
+            self.threshold = float(np.percentile(cal_errors, THRESHOLD_PCT)) if not use_optimal_threshold else find_optimal_threshold(cal_errors, np.zeros(len(cal_errors)))
+        else:
+            X_pred, _ = self.model.predict(X[:500], verbose=0)
+            errors = np.mean(np.abs(X[:500] - X_pred), axis=(1, 2))
+            self.threshold = float(np.percentile(errors, THRESHOLD_PCT + 3))
+            
         log.info(f"Threshold: {self.threshold:.6f}")
 
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:

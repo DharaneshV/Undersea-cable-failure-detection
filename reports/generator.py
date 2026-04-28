@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datetime import datetime
-from reportlab.lib import colors
+from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -30,19 +30,17 @@ class ReportGenerator:
         styles = getSampleStyleSheet()
         elements = []
 
-        # ── Header ────────────────────────────────────────────────────────────
         title_style = ParagraphStyle(
             'ReportTitle',
             parent=styles['Heading1'],
             fontSize=22,
             spaceAfter=20,
-            textColor=colors.hexColor("#020912")
+            textColor=HexColor("#020912")
         )
         elements.append(Paragraph("Undersea Cable Forensic Report", title_style))
         elements.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
         elements.append(Spacer(1, 20))
 
-        # ── Metadata Section ──────────────────────────────────────────────────
         elements.append(Paragraph("System Context", styles['Heading2']))
         meta_data = [
             ["Deployment ID", metadata.get("deployment_id", "N/A")],
@@ -54,22 +52,20 @@ class ReportGenerator:
         ]
         t_meta = Table(meta_data, colWidths=[150, 300])
         t_meta.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.hexColor("#041322")),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.whitesmoke),
+            ('BACKGROUND', (0, 0), (0, -1), HexColor("#041322")),
+            ('TEXTCOLOR', (0, 0), (0, -1), "whitesmoke"),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
+            ('GRID', (0, 0), (-1, -1), 0.5, "grey")
         ]))
         elements.append(t_meta)
         elements.append(Spacer(1, 30))
 
-        # ── Fault Log Table ───────────────────────────────────────────────────
         elements.append(Paragraph("Detection Log", styles['Heading2']))
         if not fault_log:
             elements.append(Paragraph("No faults detected during this operation window.", styles['Italic']))
         else:
-            # Table Header
             data = [["Timestamp", "Type", "Severity", "Est. Distance (m)"]]
             for f in fault_log:
                 data.append([
@@ -81,20 +77,20 @@ class ReportGenerator:
 
             t_log = Table(data, colWidths=[120, 150, 80, 120])
             t_log.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.hexColor("#00ffc8")), # Bio Green
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.hexColor("#020912")),
+                ('BACKGROUND', (0, 0), (-1, 0), HexColor("#00ffc8")),
+                ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#020912")),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), 12),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.whitesmoke, colors.white])
+                ('GRID', (0, 0), (-1, -1), 0.5, "grey"),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), ["whitesmoke", "white"])
             ]))
             elements.append(t_log)
 
-        # ── Footer ────────────────────────────────────────────────────────────
         elements.append(Spacer(1, 50))
-        elements.append(Paragraph("End of Report", styles['Centered']))
+        footer_style = ParagraphStyle('Footer', parent=styles['Normal'], alignment=1)
+        elements.append(Paragraph("End of Report", footer_style))
 
         doc.build(elements)
         return output_path
