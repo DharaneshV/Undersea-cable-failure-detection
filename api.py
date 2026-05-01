@@ -333,10 +333,10 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
                     "index": int(i),
                     "total": int(len(result_full)),
                     "timestamp": str(row["timestamp"])[:19],
-                    "voltage": round(float(row["voltage"]), 2),
-                    "current": round(float(row["current"]), 3),
-                    "temperature": round(float(row["temperature"]), 2),
-                    "vibration": round(float(row["vibration"]), 4),
+                    "voltage": round(float(row.get("voltage", 0.0)) if pd.notna(row.get("voltage", 0.0)) else 0.0, 2),
+                    "current": round(float(row.get("current", 0.0)) if pd.notna(row.get("current", 0.0)) else 0.0, 3),
+                    "temperature": round(float(row.get("temperature", 0.0)) if pd.notna(row.get("temperature", 0.0)) else 0.0, 2),
+                    "vibration": round(float(row.get("vibration", 0.0)) if pd.notna(row.get("vibration", 0.0)) else 0.0, 4),
                     "anomaly_score": round(sc, 5),
                     "threshold": round(thr, 5),
                     "is_fault": is_fault,
@@ -356,7 +356,7 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
     except WebSocketDisconnect:
         print("Client disconnected.")
     except Exception as e:
-        print(f"Error in websocket loop: {e}")
+        log.error(f"Error in websocket loop: {e}")
         try:
             await websocket.close()
         except:

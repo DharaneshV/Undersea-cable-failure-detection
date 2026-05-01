@@ -166,8 +166,15 @@ def adapt_dataset(
     t = np.arange(len(df)) / SAMPLE_RATE
     df["timestamp"] = pd.to_datetime(t, unit="s", origin="2025-01-01")
 
+    # ── pad missing modalities and set domain id ──────────────────────────────
+    df["acoustic_strain"] = 0.0
+    df["optical_osnr"] = 0.0
+    df["optical_ber"] = 0.0
+    df["optical_power"] = 0.0
+    df["cable_domain_id"] = 0  # 0 = Electrical Domain
+
     # Reorder columns to match simulator output
-    df = df[["timestamp"] + FEATURES + ["label", "fault_type"]]
+    df = df[["timestamp"] + FEATURES + ["cable_domain_id", "label", "fault_type"]]
 
     # ── build fault log ───────────────────────────────────────────────────────
     fault_log = _extract_fault_log(df)
@@ -264,13 +271,18 @@ def generate_realistic_dataset(
     vibration[micro_idx] += rng.uniform(0.1, 0.3, n_micro)
 
     df = pd.DataFrame({
-        "timestamp":   pd.to_datetime(t, unit="s", origin="2025-01-01"),
-        "voltage":     voltage,
-        "current":     current,
-        "temperature": temperature,
-        "vibration":   vibration,
-        "label":       0,
-        "fault_type":  "none",
+        "timestamp":       pd.to_datetime(t, unit="s", origin="2025-01-01"),
+        "voltage":         voltage,
+        "current":         current,
+        "temperature":     temperature,
+        "vibration":       vibration,
+        "acoustic_strain": 0.0,
+        "optical_osnr":    0.0,
+        "optical_ber":     0.0,
+        "optical_power":   0.0,
+        "cable_domain_id": 0,
+        "label":           0,
+        "fault_type":      "none",
     })
 
     # ── inject realistic faults ───────────────────────────────────────────────

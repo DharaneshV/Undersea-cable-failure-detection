@@ -235,24 +235,37 @@ export default function MetricsGrid({ data, prevData }) {
         hp={data.health_pct ?? 100}
         msg={healthMsg(data.health_pct ?? 100)}
       />
-      <MetricCard
-        field="voltage" label="Voltage" value={data.voltage} prevValue={prevData?.voltage}
-        unit="V"
-        color={SENSOR_OCEAN.voltage.color}
-        pct={pct(data.voltage, 260)} animDelay={60}
-      />
-      <MetricCard
-        field="current" label="Current" value={data.current} prevValue={prevData?.current}
-        unit="A"
-        color={SENSOR_OCEAN.current.color}
-        pct={pct(data.current, 10)} animDelay={120}
-      />
-      <MetricCard
-        field="temperature" label="Temperature" value={data.temperature} prevValue={prevData?.temperature}
-        unit="°C"
-        color={SENSOR_OCEAN.temperature.color}
-        pct={pct(data.temperature, 60)} animDelay={180}
-      />
+      {data.cable_domain_id === 1 ? (
+        <>
+          <MetricCard
+            field="optical_osnr" label="OSNR" value={data.optical_osnr} prevValue={prevData?.optical_osnr}
+            unit="dB" color={SENSOR_OCEAN.voltage.color} pct={pct(data.optical_osnr, 40)} animDelay={60}
+          />
+          <MetricCard
+            field="optical_ber" label="Log BER" value={data.optical_ber} prevValue={prevData?.optical_ber}
+            unit="log" color={SENSOR_OCEAN.current.color} pct={pct(data.optical_ber + 15, 15)} animDelay={120}
+          />
+          <MetricCard
+            field="optical_power" label="Out Power" value={data.optical_power} prevValue={prevData?.optical_power}
+            unit="dBm" color={SENSOR_OCEAN.temperature.color} pct={pct(data.optical_power, 20)} animDelay={180}
+          />
+        </>
+      ) : (
+        <>
+          <MetricCard
+            field="voltage" label="Voltage" value={data.voltage} prevValue={prevData?.voltage}
+            unit="V" color={SENSOR_OCEAN.voltage.color} pct={pct(data.voltage, 260)} animDelay={60}
+          />
+          <MetricCard
+            field="current" label="Current" value={data.current} prevValue={prevData?.current}
+            unit="A" color={SENSOR_OCEAN.current.color} pct={pct(data.current, 10)} animDelay={120}
+          />
+          <MetricCard
+            field="temperature" label="Temperature" value={data.temperature} prevValue={prevData?.temperature}
+            unit="°C" color={SENSOR_OCEAN.temperature.color} pct={pct(data.temperature, 60)} animDelay={180}
+          />
+        </>
+      )}
       <MetricCard
         field="anomaly" label="Anomaly Score" value={data.anomaly_score} prevValue={prevData?.anomaly_score}
         unit={`thr ${data.threshold?.toFixed(5) ?? '--'}`}

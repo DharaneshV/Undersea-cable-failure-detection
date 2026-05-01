@@ -23,7 +23,7 @@ from config import (
     BATCH_SIZE, CLASSIFICATION_MAP, CLASS_NAMES, DROPOUT_RATE, EPOCHS,
     FEATURES, LATENT_UNITS, LSTM_UNITS, NUM_CLASSES, SEQ_LEN,
     THRESHOLD_PCT, THRESHOLD_VAL_SPLIT, TRANSFORMER_BLOCKS,
-    TRANSFORMER_FF_DIM, TRANSFORMER_HEADS,
+    TRANSFORMER_FF_DIM, TRANSFORMER_HEADS, USE_OPTIMAL_THRESHOLD,
 )
 from utils import clip_to_scaler_bounds, find_optimal_threshold, make_sequences
 
@@ -96,10 +96,20 @@ class TransformerEncoderBlock(Layer):
 
 def build_conv_transformer_autoencoder(seq_len: int, n_features: int, num_classes: int = 4) -> Model:
     downsampled_len = seq_len // CONV_STRIDE
-    inp = Input(shape=(seq_len, n_features), name="input")
+    inp_sensor = Input(shape=(seq_len, n_features), name="sensor_input")
+    inp_domain = Input(shape=(1,), name="domain_input")
+
+    # Mask missing modalities (0.0)
+    x_sensor = layers.Masking(mask_value=0.0)(inp_sensor)
+
+    # Domain Embedding
+    domain_emb = layers.Embedding(input_dim=10, output_dim=16)(inp_domain) # shape (batch, 1, 16)
+    domain_vec = Dense(CONV_FILTERS, activation="relu")(domain_emb) # shape (batch, 1, CONV_FILTERS)
 
     # Encoder
-    x = Conv1D(filters=CONV_FILTERS, kernel_size=3, strides=CONV_STRIDE, padding="same", activation="relu")(inp)
+    x = Conv1D(filters=CONV_FILTERS, kernel_size=3, strides=CONV_STRIDE, padding="same", activation="relu")(x_sensor)
+    x = x + domain_vec # Broadcast add domain embedding to sequence features
+
     x = SinePositionalEncoding(max_len=downsampled_len + 8)(x)
     for i in range(TRANSFORMER_BLOCKS):
         x = TransformerEncoderBlock(num_heads=TRANSFORMER_HEADS, ff_dim=TRANSFORMER_FF_DIM, dropout=DROPOUT_RATE)(x)
@@ -121,9 +131,10 @@ def build_conv_transformer_autoencoder(seq_len: int, n_features: int, num_classe
     cls_x = Dropout(DROPOUT_RATE)(cls_x)
     out_cls = Dense(num_classes, activation="softmax", name="classification")(cls_x)
 
-    model = Model(inputs=inp, outputs=[out_rec, out_cls])
+    model = Model(inputs=[inp_sensor, inp_domain], outputs=[out_rec, out_cls])
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1.0)
     model.compile(
-        optimizer="adam",
+        optimizer=optimizer,
         loss={"reconstruction": "mae", "classification": "sparse_categorical_crossentropy"},
         loss_weights={"reconstruction": 1.0, "classification": 1.0}
     )
@@ -138,11 +149,11 @@ class CableFaultDetector:
         self.threshold = None
 
     def _scale(self, df: pd.DataFrame, fit: bool = False) -> np.ndarray:
-        values = df[FEATURES].values.astype(np.float32)
+        values = df.reindex(columns=FEATURES).fillna(0.0)[FEATURES].values.astype(np.float32)
         if fit: return self.scaler.fit_transform(values)
         return self.scaler.transform(clip_to_scaler_bounds(values, self.scaler))
 
-    def train(self, df: pd.DataFrame, use_optimal_threshold: bool = False) -> None:
+    def train(self, df: pd.DataFrame, use_optimal_threshold: bool = USE_OPTIMAL_THRESHOLD) -> None:
         normal_df = df[df["label"] == 0].reset_index(drop=True)
         
         min_normal_for_cal = SEQ_LEN + 100
@@ -156,20 +167,36 @@ class CableFaultDetector:
         self._scale(normal_df.iloc[:split_at], fit=True)
         
         X = make_sequences(self._scale(df), SEQ_LEN)
+        if "cable_domain_id" in df.columns:
+            domain_ids = df["cable_domain_id"].values[SEQ_LEN:].reshape(-1, 1)
+        else:
+            domain_ids = np.zeros((len(X), 1))
+            
         y_cls = np.array([CLASSIFICATION_MAP.get(t, 0) for t in df["fault_type"].iloc[SEQ_LEN:].values])
 
         self.model = build_conv_transformer_autoencoder(SEQ_LEN, len(FEATURES), NUM_CLASSES)
-        callbacks = [EarlyStopping(monitor="val_loss", patience=7, restore_best_weights=True)]
-        self.model.fit(X, {"reconstruction": X, "classification": y_cls}, epochs=EPOCHS, batch_size=BATCH_SIZE, validation_split=0.15, callbacks=callbacks, verbose=1)
+        callbacks = [
+            EarlyStopping(monitor="val_loss", patience=8, restore_best_weights=True),
+            ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, verbose=1),
+        ]
+        self.model.fit(
+            {"sensor_input": X, "domain_input": domain_ids}, 
+            {"reconstruction": X, "classification": y_cls}, 
+            epochs=EPOCHS, batch_size=BATCH_SIZE, validation_split=0.15, callbacks=callbacks, verbose=1
+        )
 
         if len(normal_df) >= min_normal_for_cal:
             cal_df = normal_df.iloc[split_at:]
             X_cal = make_sequences(self._scale(cal_df), SEQ_LEN)
-            X_cal_pred, _ = self.model.predict(X_cal, verbose=0)
+            if "cable_domain_id" in cal_df.columns:
+                cal_domain_ids = cal_df["cable_domain_id"].values[SEQ_LEN:].reshape(-1, 1)
+            else:
+                cal_domain_ids = np.zeros((len(X_cal), 1))
+            X_cal_pred, _ = self.model.predict({"sensor_input": X_cal, "domain_input": cal_domain_ids}, verbose=0)
             cal_errors = np.mean(np.abs(X_cal - X_cal_pred), axis=(1, 2))
-            self.threshold = float(np.percentile(cal_errors, THRESHOLD_PCT)) if not use_optimal_threshold else find_optimal_threshold(cal_errors, np.zeros(len(cal_errors)))
+            self.threshold = float(np.percentile(cal_errors, THRESHOLD_PCT))
         else:
-            X_pred, _ = self.model.predict(X[:500], verbose=0)
+            X_pred, _ = self.model.predict({"sensor_input": X[:500], "domain_input": domain_ids[:500]}, verbose=0)
             errors = np.mean(np.abs(X[:500] - X_pred), axis=(1, 2))
             self.threshold = float(np.percentile(errors, THRESHOLD_PCT + 3))
             
@@ -178,7 +205,12 @@ class CableFaultDetector:
     def predict(self, df: pd.DataFrame) -> pd.DataFrame:
         scaled = self._scale(df)
         X = make_sequences(scaled, SEQ_LEN)
-        X_pred, C_pred = self.model.predict(X, verbose=0)
+        if "cable_domain_id" in df.columns:
+            domain_ids = df["cable_domain_id"].values[SEQ_LEN:].reshape(-1, 1)
+        else:
+            domain_ids = np.zeros((len(X), 1))
+            
+        X_pred, C_pred = self.model.predict({"sensor_input": X, "domain_input": domain_ids}, verbose=0)
         
         per_feature_errors = np.mean(np.abs(X - X_pred), axis=1)
         errors = np.mean(per_feature_errors, axis=1)
@@ -205,9 +237,30 @@ class CableFaultDetector:
         log.info(f"ROC-AUC: {auc:.4f}")
         return {"report": report, "roc_auc": auc, "threshold": self.threshold}
 
+    def calibrate_threshold(self, eval_df: pd.DataFrame) -> float:
+        """Refine threshold using F1-sweep on labeled evaluation data.
+        Call this AFTER training, with held-out data that has both normal + fault labels.
+        Returns the optimised threshold and updates self.threshold in-place.
+        """
+        result = self.predict(eval_df)
+        valid = result.dropna(subset=["anomaly_score"])
+        scores = valid["anomaly_score"].values
+        labels = valid["label"].values
+        if len(np.unique(labels)) < 2:
+            log.warning("Calibration requires both normal and fault labels — keeping p95 threshold")
+            return self.threshold
+        new_thr = find_optimal_threshold(scores, labels)
+        log.info(f"Threshold calibrated: {self.threshold:.6f} → {new_thr:.6f}")
+        self.threshold = new_thr
+        return new_thr
+
     def reconstruction_errors_per_feature(self, df: pd.DataFrame) -> np.ndarray:
         X = make_sequences(self._scale(df), SEQ_LEN)
-        preds = self.model.predict(X, verbose=0)
+        if "cable_domain_id" in df.columns:
+            domain_ids = df["cable_domain_id"].values[SEQ_LEN:].reshape(-1, 1)
+        else:
+            domain_ids = np.zeros((len(X), 1))
+        preds = self.model.predict({"sensor_input": X, "domain_input": domain_ids}, verbose=0)
         return np.mean(np.abs(X - preds[0]), axis=1)
 
     def save(self, path: str = "saved_model") -> None:

@@ -31,7 +31,15 @@ CLASS_NAMES = ["Normal", "Short Circuit", "Open Circuit", "High-Impedance"]
 NUM_CLASSES = 4
 
 # ── model ─────────────────────────────────────────────────────────────────────
-FEATURES        = ["voltage", "current", "temperature", "vibration"]
+# Unified Multi-Modal Feature Space
+FEATURES = [
+    # Electrical Domain
+    "voltage", "current", "temperature",
+    # Mechanical / Acoustic Domain
+    "vibration", "acoustic_strain",
+    # Optical Domain
+    "optical_osnr", "optical_ber", "optical_power"
+]
 USE_DERIVED_FEATURES = False  # If True, feature_engineering.py will be invoked
 
 SEQ_LEN         = 60        # 60 timesteps for transformer sequence
@@ -41,9 +49,10 @@ TRANSFORMER_BLOCKS = 2
 LSTM_UNITS      = 64        # encoder outer layer units
 LATENT_UNITS    = 32        # bottleneck units
 DROPOUT_RATE    = 0.20      # applied after each LSTM layer
-EPOCHS          = 20
+EPOCHS          = 5
 BATCH_SIZE      = 64
 THRESHOLD_PCT   = 95        # percentile of validation reconstruction error
+USE_OPTIMAL_THRESHOLD = False # set True only when calibrating with labeled eval data
 
 # fraction of normal data held-out for threshold calibration (not trained on)
 THRESHOLD_VAL_SPLIT = 0.05

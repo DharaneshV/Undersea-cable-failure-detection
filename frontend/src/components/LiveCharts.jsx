@@ -7,12 +7,18 @@ import {
   ReferenceLine, ReferenceArea,
 } from 'recharts';
 
-/* ── Ocean sensor palette — matches MetricsGrid ──────────────────────────── */
-const SENSORS = [
+const ELECTRICAL_SENSORS = [
   { key: 'voltage',     label: 'Voltage',     color: '#0084ff', unit: 'V',  gradId: 'gVoltage'  },
   { key: 'current',     label: 'Current',     color: '#00ffc8', unit: 'A',  gradId: 'gCurrent'  },
   { key: 'temperature', label: 'Temperature', color: '#ffab40', unit: '°C', gradId: 'gTemp'     },
   { key: 'vibration',   label: 'Vibration',   color: '#ff4d6d', unit: 'g',  gradId: 'gVibration'},
+];
+
+const OPTICAL_SENSORS = [
+  { key: 'optical_osnr',  label: 'OSNR',        color: '#0084ff', unit: 'dB',   gradId: 'gOsnr'   },
+  { key: 'optical_ber',   label: 'Log BER',     color: '#00ffc8', unit: 'log',  gradId: 'gBer'    },
+  { key: 'optical_power', label: 'Out Power',   color: '#ffab40', unit: 'dBm',  gradId: 'gPower'  },
+  { key: 'vibration',     label: 'Vibration',   color: '#ff4d6d', unit: 'g',    gradId: 'gVibration'},
 ];
 
 const AXIS_STYLE = {
@@ -51,11 +57,10 @@ function OceanTooltip({ active, payload }) {
   );
 }
 
-/* ── Gradient defs ───────────────────────────────────────────────────────── */
-function GradientDefs({ aboveThreshold }) {
+function GradientDefs({ aboveThreshold, sensors }) {
   return (
     <defs>
-      {SENSORS.map(s => (
+      {sensors.map(s => (
         <linearGradient key={s.gradId} id={s.gradId} x1="0" y1="0" x2="0" y2="1">
           {/* Two-stop ocean gradient — strong at top, near-transparent at base */}
           <stop offset="0%"   stopColor={s.color} stopOpacity={0.50} />
@@ -74,13 +79,13 @@ function GradientDefs({ aboveThreshold }) {
 }
 
 /* ── Sparkline overview — all 4 sensors on one overlay strip ─────────────── */
-function SparklineStrip({ data }) {
+function SparklineStrip({ data, sensors }) {
   return (
     <div>
       <div className="chart-label-strip">
         <span className="chart-label">Sensor Overview</span>
         <div className="legend-pills">
-          {SENSORS.map(s => (
+          {sensors.map(s => (
             <div key={s.key} className="legend-pill">
               <div className="legend-dot" style={{ background: s.color }} />
               {s.label}
@@ -90,7 +95,7 @@ function SparklineStrip({ data }) {
       </div>
       <ResponsiveContainer width="100%" height={48}>
         <LineChart data={data} margin={{ top: 2, right: 4, left: 4, bottom: 2 }}>
-          {SENSORS.map(s => (
+          {sensors.map(s => (
             <Line
               key={s.key}
               type="monotone" dataKey={s.key} name={s.label}
@@ -233,14 +238,17 @@ export default function LiveCharts({ data, threshold }) {
     );
   }
 
+  const domainId = data[0]?.cable_domain_id ?? 0;
+  const currentSensors = domainId === 1 ? OPTICAL_SENSORS : ELECTRICAL_SENSORS;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Top sparkline strip — all sensors overlaid */}
-      <SparklineStrip data={data} />
+      <SparklineStrip data={data} sensors={currentSensors} />
 
       {/* 2×2 sensor grid — individual area charts */}
       <div className="chart-grid-2x2">
-        {SENSORS.map(s => (
+        {currentSensors.map(s => (
           <SensorChart key={s.key} sensor={s} data={data} />
         ))}
       </div>
