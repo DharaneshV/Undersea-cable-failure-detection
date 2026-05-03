@@ -21,7 +21,7 @@ from reports import ReportGenerator
 # In-memory storage for report links (for session duration)
 REPORTS_DB = {}
 
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address, config_filename=None)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
