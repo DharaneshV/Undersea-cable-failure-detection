@@ -75,7 +75,7 @@ export default function ModelInfoPanel() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-            {modelType.replace(/\b\w/g, c => c.toUpperCase())}
+            Detection model
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
             Anomaly Detection · Predictive Maintenance
@@ -103,12 +103,10 @@ export default function ModelInfoPanel() {
 
       {/* Architecture block */}
       <div className="model-arch-block">
-        <h4>Architecture</h4>
-        <div>Conv1D (stride 2) → SinePositionalEncoding</div>
-        <div>→ TransformerEncoderBlock × 2 (MHA + FFN)</div>
-        <div>→ GlobalAveragePooling → Dense(32) ← Bottleneck</div>
-        <div>→ Decoder (Transformer × 2 + Conv1DTranspose)</div>
-        <div>→ TimeDistributed Dense({features.length}) — MAE Loss</div>
+        <h4>Performance metrics</h4>
+        <div>Real-time telemetry analysis</div>
+        <div>Dynamic anomaly thresholding</div>
+        <div>Multi-sensor feature fusion</div>
       </div>
 
       {/* Features + data source */}

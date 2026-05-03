@@ -18,7 +18,7 @@ import pandas as pd
 
 from config import (
     SAMPLE_RATE, CABLE_LENGTH, SIGNAL_SPEED,
-    NORMAL_PROFILES, FAULT_TYPES, SEQ_LEN,
+    NORMAL_PROFILES, FAULT_TYPES, SEQ_LEN, CABLE_DOMAIN_NAMES,
 )
 
 log = logging.getLogger(__name__)
@@ -101,13 +101,20 @@ def generate_dataset(
     # ── base normal signal ────────────────────────────────────────────────────
     t = np.arange(n_samples) / SAMPLE_RATE
     df = pd.DataFrame({
-        "timestamp":   pd.to_datetime(t, unit="s", origin="2025-01-01"),
-        "voltage":     rng.normal(*NORMAL_PROFILES["voltage"],     n_samples),
-        "current":     rng.normal(*NORMAL_PROFILES["current"],     n_samples),
-        "temperature": rng.normal(*NORMAL_PROFILES["temperature"], n_samples),
-        "vibration":   rng.normal(*NORMAL_PROFILES["vibration"],   n_samples),
-        "label":       0,
-        "fault_type":  "none",
+        "timestamp":           pd.to_datetime(t, unit="s", origin="2025-01-01"),
+        "voltage":             rng.normal(*NORMAL_PROFILES["voltage"],     n_samples),
+        "current":             rng.normal(*NORMAL_PROFILES["current"],     n_samples),
+        "temperature":         rng.normal(*NORMAL_PROFILES["temperature"], n_samples),
+        "vibration":           rng.normal(*NORMAL_PROFILES["vibration"],   n_samples),
+        "acoustic_strain":     np.zeros(n_samples),
+        "optical_osnr":        np.zeros(n_samples),
+        "optical_ber":         np.zeros(n_samples),
+        "optical_power":       np.zeros(n_samples),
+        "cable_distance_norm": 0.0,   # 0.0 = no active fault located
+        "cable_domain_id":     0,
+        "cable_type":          CABLE_DOMAIN_NAMES[0],  # "Electrical (Copper)"
+        "label":               0,
+        "fault_type":          "none",
     })
 
     # Realistic low-frequency drift
@@ -160,12 +167,19 @@ def generate_dataset(
         # True cable position: random point along the cable.
         # This is what a real TDR system would measure (round-trip echo delay).
         fault_distance_m = round(float(rng.uniform(0, CABLE_LENGTH)), 1)
+        fault_distance_norm = round(fault_distance_m / CABLE_LENGTH, 6)
+
+        # Stamp distance on the fault rows
+        df.iloc[start : start + duration,
+                df.columns.get_loc("cable_distance_norm")] = fault_distance_norm
 
         fault_log.append({
-            "fault_type":       ftype,
-            "start_sample":     start,
-            "duration_samples": duration,
-            "fault_distance_m": fault_distance_m,
+            "fault_type":         ftype,
+            "start_sample":       start,
+            "duration_samples":   duration,
+            "fault_distance_m":   fault_distance_m,
+            "fault_distance_norm": fault_distance_norm,
+            "cable_length_m":     CABLE_LENGTH,
         })
         log.debug(
             "Injected %s at sample %d (%.1f m)",

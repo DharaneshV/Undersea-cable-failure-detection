@@ -54,10 +54,19 @@ app.state.limiter = limiter
 
 
 class SensorReading(BaseModel):
-    voltage: float = Field(..., ge=0, le=500, description="Voltage in volts")
-    current: float = Field(..., ge=0, le=20, description="Current in amperes")
-    temperature: float = Field(..., ge=-10, le=100, description="Temperature in Celsius")
-    vibration: float = Field(..., ge=-1, le=10, description="Vibration in g")
+    # Core electrical sensors (always required)
+    voltage:     float = Field(..., ge=0,   le=500,  description="Voltage in volts")
+    current:     float = Field(..., ge=0,   le=20,   description="Current in amperes")
+    temperature: float = Field(..., ge=-10, le=100,  description="Temperature in Celsius")
+    vibration:   float = Field(..., ge=-10, le=10,   description="Vibration in g")
+    # Extended multi-modal sensors (optional — default to neutral/safe values)
+    acoustic_strain:     float = Field(default=0.0,  ge=-100, le=100,  description="Acoustic strain (µε)")
+    optical_osnr:        float = Field(default=20.0, ge=-30,  le=50,   description="Optical OSNR (dB)")
+    optical_ber:         float = Field(default=0.0,  ge=-20,  le=5,    description="Optical BER (log10)")
+    optical_power:       float = Field(default=0.0,  ge=-10,  le=5,    description="Optical power (dBm)")
+    cable_distance_norm: float = Field(default=0.0,  ge=0,    le=1,    description="Normalised fault position [0–1]")
+    # Domain identifier — 0=Electrical, 1=Optical, 2=Hybrid, 3=Acoustic
+    cable_domain_id:     int   = Field(default=0,    ge=0,    le=9,    description="Cable domain ID")
 
     @validator("voltage")
     def validate_voltage_range(cls, v):
@@ -85,13 +94,16 @@ detector.load()
 print("Model loaded.")
 
 def severity_of(score: float, threshold: float) -> tuple[str, str]:
-    r = score / threshold if threshold > 0 else 0
-    if r > 5:     return "Critical", "sev-critical"
-    if r > 3:     return "High",     "sev-high"
-    if r > 1.2:   return "Medium",   "sev-medium"
-    if r > 1.0:   return "Low",      "sev-low"
-    if r > 0.75:  return "Degrading","sev-warning"
-    return               "Normal",   "sev-low"
+    """Map 1-P(Normal) fault probability to a severity label.
+    score is now [0, 1] — no longer a ratio against threshold.
+    threshold is kept as parameter for API compatibility but not used for ratio.
+    """
+    if score > 0.70:   return "Critical",  "sev-critical"
+    if score > 0.50:   return "High",       "sev-high"
+    if score > 0.30:   return "Medium",     "sev-medium"
+    if score > 0.15:   return "Low",        "sev-low"
+    if score > 0.05:   return "Degrading",  "sev-warning"
+    return                    "Normal",     "sev-normal"
 
 def match_fault_distance(sample_idx: int, fault_log: list) -> float:
     for fl in fault_log:
@@ -146,13 +158,19 @@ async def predict_single(request: Request, reading: SensorReading):
     log.info(f"Prediction request: {reading.dict()}")
     
     df = pd.DataFrame([{
-        "voltage": reading.voltage,
-        "current": reading.current,
-        "temperature": reading.temperature,
-        "vibration": reading.vibration,
-        "timestamp": pd.Timestamp.now(),
-        "label": 0,
-        "fault_type": "none",
+        "voltage":            reading.voltage,
+        "current":            reading.current,
+        "temperature":        reading.temperature,
+        "vibration":          reading.vibration,
+        "acoustic_strain":    reading.acoustic_strain,
+        "optical_osnr":       reading.optical_osnr,
+        "optical_ber":        reading.optical_ber,
+        "optical_power":      reading.optical_power,
+        "cable_distance_norm": reading.cable_distance_norm,
+        "cable_domain_id":    reading.cable_domain_id,
+        "timestamp":          pd.Timestamp.now(),
+        "label":              0,
+        "fault_type":         "none",
     }])
     
     result = detector.predict(df)
@@ -299,8 +317,9 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
             row = result_full.iloc[i]
 
             sc = float(row["anomaly_score"]) if not pd.isna(row["anomaly_score"]) else 0.0
-            is_fault = bool(sc > thr)
-            is_warning = bool(sc > 0.75 * thr and not is_fault and not pd.isna(row["anomaly_score"]))
+            # anomaly_score is now 1-P(Normal) in [0,1] — use fixed probability thresholds
+            is_fault   = bool(sc > 0.30)   # Medium severity and above = detected fault
+            is_warning = bool(0.05 < sc <= 0.30 and not pd.isna(row["anomaly_score"]))
             ftype = row.get("fault_type", "none")
 
             new_fault = None
@@ -333,17 +352,20 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
                     "index": int(i),
                     "total": int(len(result_full)),
                     "timestamp": str(row["timestamp"])[:19],
-                    "voltage": round(float(row.get("voltage", 0.0)) if pd.notna(row.get("voltage", 0.0)) else 0.0, 2),
-                    "current": round(float(row.get("current", 0.0)) if pd.notna(row.get("current", 0.0)) else 0.0, 3),
+                    "voltage":     round(float(row.get("voltage", 0.0))     if pd.notna(row.get("voltage", 0.0))     else 0.0, 2),
+                    "current":     round(float(row.get("current", 0.0))     if pd.notna(row.get("current", 0.0))     else 0.0, 3),
                     "temperature": round(float(row.get("temperature", 0.0)) if pd.notna(row.get("temperature", 0.0)) else 0.0, 2),
-                    "vibration": round(float(row.get("vibration", 0.0)) if pd.notna(row.get("vibration", 0.0)) else 0.0, 4),
+                    "vibration":   round(float(row.get("vibration", 0.0))   if pd.notna(row.get("vibration", 0.0))   else 0.0, 4),
+                    # Primary signal: 1 - P(Normal) in [0, 1]
                     "anomaly_score": round(sc, 5),
-                    "threshold": round(thr, 5),
-                    "is_fault": is_fault,
-                    "is_warning": is_warning,
-                    "health_pct": round(hp, 1),
-                    "xai_text": xai_text,
-                    "new_fault": new_fault
+                    "threshold":     round(thr, 5),
+                    # Secondary: reconstruction error
+                    "recon_error":   round(float(row.get("recon_error", 0.0)) if pd.notna(row.get("recon_error", 0.0)) else 0.0, 5),
+                    "is_fault":     is_fault,
+                    "is_warning":   is_warning,
+                    "health_pct":   round(hp, 1),
+                    "xai_text":     xai_text,
+                    "new_fault":    new_fault,
                 }
                 await websocket.send_text(json.dumps(payload))
                 

@@ -35,7 +35,7 @@ function LiveClock() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
-  return <div className="hero-clock">{time}</div>;
+  return <div className="hero-clock" aria-live="polite" aria-atomic="true">{time}</div>;
 }
 
 /* ── Status Pill ─────────────────────────────────────────────────────────── */
@@ -72,10 +72,10 @@ function EmptyState() {
     <div className="empty-state">
       {/* Submarine / sonar icon */}
       <span className="empty-icon">🌊</span>
-      <div className="empty-title">Awaiting Depth Signal</div>
+      <div className="empty-title">Ready to stream</div>
       <div className="empty-sub">
         Select your dataset and press{' '}
-        <strong style={{ color: 'var(--bio)' }}>▶ Start Stream</strong>{' '}
+        <strong style={{ color: 'var(--bio)' }}>Start Stream</strong>{' '}
         to begin real-time fault detection across the cable route.
       </div>
     </div>
@@ -84,21 +84,27 @@ function EmptyState() {
 
 /* ── CSV Export ──────────────────────────────────────────────────────────── */
 function exportCSV(faultLog) {
-  const headers = ['timestamp', 'fault_type', 'severity', 'est_distance_m', 'anomaly_score'];
-  const rows    = faultLog.map(f => [
-    f.Time ?? '',
-    f.fault_type ?? '',
-    f.Severity ?? '',
-    f.est_distance ?? '',
-    f.anomaly_score ?? '',
+  const headers = ['Timestamp', 'Fault type', 'Severity', 'Anomaly score', 'Distance (m)'];
+  const escapeField = field => {
+    const s = String(field ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+  const BOM = '\uFEFF'; // fixes Excel encoding on Windows
+  const rows = faultLog.map(f => [
+    f.Time ?? '', f.fault_type ?? '', f.Severity ?? '',
+    f.anomaly_score ?? '', f.est_distance ?? ''
   ]);
-  const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const csv = BOM + [headers, ...rows].map(r => r.map(escapeField).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = `fault_log_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
@@ -189,6 +195,29 @@ export default function App() {
   const [activeTab,  setActiveTab]  = useState('monitor');
 
   const wsRef = useRef(null);
+
+  /* ── Tab Bar Keyboard Navigation ─────────────────────────────────────── */
+  const tabOrder = ['monitor', 'history', 'model'];
+  useEffect(() => {
+    const bar = document.querySelector('[role="tablist"]');
+    if (!bar) return;
+    const handler = (e) => {
+      const current = tabOrder.indexOf(activeTab);
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveTab(tabOrder[(current + 1) % tabOrder.length]);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveTab(tabOrder[(current - 1 + tabOrder.length) % tabOrder.length]);
+      } else if (e.key === 'Home') {
+        e.preventDefault(); setActiveTab(tabOrder[0]);
+      } else if (e.key === 'End') {
+        e.preventDefault(); setActiveTab(tabOrder[tabOrder.length - 1]);
+      }
+    };
+    bar.addEventListener('keydown', handler);
+    return () => bar.removeEventListener('keydown', handler);
+  }, [activeTab]);
 
   /* ── API health check + datasets ──────────────────────────────────────── */
   useEffect(() => {
@@ -291,7 +320,7 @@ export default function App() {
       </div>
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="glass-card header">
+      <header className="glass-card header" role="banner">
         <div className="header-left">
           {/* Sonar icon — CSS handles the ring animations */}
           <div className="header-icon">
@@ -303,7 +332,7 @@ export default function App() {
           </div>
           <div>
             <div className="header-title">Undersea Cable Monitor</div>
-            <div className="header-sub">Conv-Transformer AE · XAI · Real-time Fault Localisation</div>
+            <div className="header-sub">Real-time anomaly detection · Fault localisation</div>
           </div>
         </div>
 
@@ -363,7 +392,7 @@ export default function App() {
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
       {/* ── Progress Bar ────────────────────────────────────────────────── */}
       {isPlaying && <ProgressBar current={progress.current} total={progress.total} />}
@@ -398,6 +427,7 @@ export default function App() {
           id="tab-monitor"
           role="tab"
           aria-selected={activeTab === 'monitor'}
+          tabIndex={activeTab === 'monitor' ? 0 : -1}
           className={`tab-btn ${activeTab === 'monitor' ? 'active' : ''}`}
           onClick={() => setActiveTab('monitor')}
         >
@@ -408,6 +438,7 @@ export default function App() {
           id="tab-history"
           role="tab"
           aria-selected={activeTab === 'history'}
+          tabIndex={activeTab === 'history' ? 0 : -1}
           className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`}
           onClick={() => setActiveTab('history')}
         >
@@ -418,6 +449,7 @@ export default function App() {
           id="tab-model"
           role="tab"
           aria-selected={activeTab === 'model'}
+          tabIndex={activeTab === 'model' ? 0 : -1}
           className={`tab-btn ${activeTab === 'model' ? 'active' : ''}`}
           onClick={() => setActiveTab('model')}
         >
@@ -426,8 +458,9 @@ export default function App() {
         </button>
       </div>
 
-      {/* ── Live Monitor Tab ─────────────────────────────────────────────── */}
-      {activeTab === 'monitor' && (
+      {/* ── Tab Content ─────────────────────────────────────────────── */}
+      <main id="main-content">
+        {activeTab === 'monitor' && (
         !latestData && !isPlaying ? (
           <EmptyState />
         ) : (
@@ -437,7 +470,7 @@ export default function App() {
               {/* Cable route panel */}
               <div className="panel">
                 <div className="panel-hdr">
-                  <div className="panel-hdr-left">Seafloor Cable — Fault Localisation</div>
+                  <div className="panel-hdr-left">Cable route — fault localisation</div>
                 </div>
                 <CableGraphic faults={faultLog} healthPct={latestData?.health_pct} />
               </div>
@@ -512,6 +545,7 @@ export default function App() {
           <ModelInfoPanel />
         </div>
       )}
+      </main>
 
       {/* ── Connection Status Pill (fixed bottom-right) ──────────────────── */}
       <div className="connection-status">

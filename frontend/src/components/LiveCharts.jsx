@@ -22,40 +22,14 @@ const OPTICAL_SENSORS = [
 ];
 
 const AXIS_STYLE = {
-  stroke: 'rgba(0,184,212,0.06)',
-  tick:   { fill: 'rgba(107,163,176,0.6)', fontFamily: 'Space Mono, monospace', fontSize: 9 },
+  stroke: '#94a3b8',
+  tick:   { fill: '#94a3b8', fontFamily: 'var(--mono)', fontSize: 11 },
 };
 
 const GRID_STYLE = {
-  strokeDasharray: '3 6',
-  stroke: 'rgba(0,184,212,0.07)',
+  strokeDasharray: '3 3',
+  stroke: '#e2e8f0',
 };
-
-/* ── Deep-sea glass tooltip ──────────────────────────────────────────────── */
-function OceanTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{
-      background: 'rgba(4,19,34,0.97)',
-      border: '1px solid rgba(0,184,212,0.18)',
-      borderRadius: 8, padding: '10px 14px',
-      fontSize: 11, fontFamily: 'Space Mono, monospace',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-    }}>
-      {payload.map((entry, i) => (
-        <div key={i} style={{
-          display: 'flex', justifyContent: 'space-between',
-          gap: 16, marginBottom: i < payload.length - 1 ? 3 : 0,
-        }}>
-          <span style={{ color: 'rgba(107,163,176,0.7)' }}>{entry.name}</span>
-          <span style={{ color: entry.color || entry.stroke, fontWeight: 700 }}>
-            {typeof entry.value === 'number' ? entry.value.toFixed(4) : entry.value}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function GradientDefs({ aboveThreshold, sensors }) {
   return (
@@ -137,7 +111,7 @@ function SensorChart({ sensor, data }) {
             axisLine={false} tickLine={false}
           />
           <YAxis {...AXIS_STYLE} axisLine={false} tickLine={false} width={36} />
-          <Tooltip content={<OceanTooltip />} />
+          <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, fontFamily: 'var(--mono)' }} />
           <Area
             type="monotone" dataKey={sensor.key} name={sensor.label}
             stroke={sensor.color} strokeWidth={2}
@@ -181,7 +155,7 @@ function AnomalyChart({ data, threshold }) {
           <CartesianGrid {...GRID_STYLE} />
           <XAxis dataKey="timestamp" hide {...AXIS_STYLE} />
           <YAxis {...AXIS_STYLE} axisLine={false} tickLine={false} width={36} domain={[0, 'auto']} />
-          <Tooltip content={<OceanTooltip />} />
+          <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, fontFamily: 'var(--mono)' }} />
 
           {/* Red zone above threshold */}
           {threshold && (
@@ -195,7 +169,7 @@ function AnomalyChart({ data, threshold }) {
           {threshold && (
             <ReferenceLine
               y={threshold}
-              stroke="#ff4d6d"
+              stroke="#e2e8f0"
               strokeDasharray="4 4"
               strokeWidth={1.5}
               label={{
@@ -203,7 +177,7 @@ function AnomalyChart({ data, threshold }) {
                 value: 'threshold',
                 fill: '#ff4d6d',
                 fontSize: 9,
-                fontFamily: 'Space Mono, monospace',
+                fontFamily: 'var(--mono)',
               }}
             />
           )}

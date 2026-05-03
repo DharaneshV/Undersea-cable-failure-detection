@@ -81,7 +81,14 @@ function HealthGauge({ hp, msg }) {
   const color = healthColor(pct);
 
   return (
-    <div className="health-card">
+    <div
+      className="health-card"
+      role="meter"
+      aria-valuenow={Math.round(hp ?? 0)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label="Cable health"
+    >
       <div className="health-label-top">System Health</div>
       <svg viewBox="0 0 120 76" width="150" height="90" aria-label={`Health ${pct.toFixed(0)}%`}>
         {/* Track ring */}
