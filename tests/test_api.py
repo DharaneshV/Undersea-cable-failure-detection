@@ -53,13 +53,20 @@ class TestEndpoints:
             "current": 50.0,
             "temperature": 200.0,
             "vibration": 5.0,
+            "acoustic_strain": 0.0,
+            "optical_osnr": 20.0,
+            "optical_ber": 0.0,
+            "optical_power": 0.0,
+            "cable_distance_norm": 0.0
         }
         response = client.post("/predict/single", json=payload)
         assert response.status_code == 422
 
     def test_predict_batch_min_samples(self, client):
         readings = [
-            {"voltage": 220.0, "current": 5.0, "temperature": 18.0, "vibration": 0.05}
+            {"voltage": 220.0, "current": 5.0, "temperature": 18.0, "vibration": 0.05, 
+             "acoustic_strain": 0.0, "optical_osnr": 20.0, "optical_ber": 0.0, 
+             "optical_power": 0.0, "cable_distance_norm": 0.0}
             for _ in range(10)
         ]
         payload = {"readings": readings}

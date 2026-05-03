@@ -67,20 +67,28 @@ class TestPredictOutput:
             detector.load()
         return detector
 
-    def test_predict_returns_required_columns(self, detector):
-        if detector.model is None:
-            pytest.skip("No pre-trained model available")
-        
-        n = 100
-        df = pd.DataFrame({
+    def _create_dummy_df(self, n):
+        return pd.DataFrame({
             "timestamp": pd.date_range("2025-01-01", periods=n, freq="100ms"),
             "voltage": np.random.normal(220, 1.2, n),
             "current": np.random.normal(5, 0.2, n),
             "temperature": np.random.normal(18, 0.5, n),
             "vibration": np.random.normal(0, 0.05, n),
+            "acoustic_strain": np.random.normal(0, 0.1, n),
+            "optical_osnr": np.random.normal(20, 1, n),
+            "optical_ber": np.random.normal(0, 0.1, n),
+            "optical_power": np.random.normal(0, 0.1, n),
+            "cable_distance_norm": np.random.uniform(0, 1, n),
+            "cable_domain_id": [0] * n,
             "label": [0] * n,
             "fault_type": ["none"] * n,
         })
+
+    def test_predict_returns_required_columns(self, detector):
+        if detector.model is None:
+            pytest.skip("No pre-trained model available")
+        
+        df = self._create_dummy_df(100)
         result = detector.predict(df)
         
         required_cols = ["anomaly_score", "predicted_label", "fault_diagnosis"]
@@ -91,16 +99,7 @@ class TestPredictOutput:
         if detector.model is None:
             pytest.skip("No pre-trained model available")
         
-        n = 100
-        df = pd.DataFrame({
-            "timestamp": pd.date_range("2025-01-01", periods=n, freq="100ms"),
-            "voltage": np.random.normal(220, 1.2, n),
-            "current": np.random.normal(5, 0.2, n),
-            "temperature": np.random.normal(18, 0.5, n),
-            "vibration": np.random.normal(0, 0.05, n),
-            "label": [0] * n,
-            "fault_type": ["none"] * n,
-        })
+        df = self._create_dummy_df(100)
         result = detector.predict(df)
         
         for feature in FEATURES:
@@ -110,16 +109,7 @@ class TestPredictOutput:
         if detector.model is None:
             pytest.skip("No pre-trained model available")
         
-        n = 100
-        df = pd.DataFrame({
-            "timestamp": pd.date_range("2025-01-01", periods=n, freq="100ms"),
-            "voltage": np.random.normal(220, 1.2, n),
-            "current": np.random.normal(5, 0.2, n),
-            "temperature": np.random.normal(18, 0.5, n),
-            "vibration": np.random.normal(0, 0.05, n),
-            "label": [0] * n,
-            "fault_type": ["none"] * n,
-        })
+        df = self._create_dummy_df(100)
         result = detector.predict(df)
         
         assert result["anomaly_score"].iloc[:SEQ_LEN].isna().all()
@@ -157,6 +147,12 @@ class TestPreTrainedModel:
             "current": np.random.normal(5, 0.2, n),
             "temperature": np.random.normal(18, 0.5, n),
             "vibration": np.random.normal(0, 0.05, n),
+            "acoustic_strain": np.random.normal(0, 0.1, n),
+            "optical_osnr": np.random.normal(20, 1, n),
+            "optical_ber": np.random.normal(0, 0.1, n),
+            "optical_power": np.random.normal(0, 0.1, n),
+            "cable_distance_norm": np.zeros(n),
+            "cable_domain_id": [0] * n,
             "label": [0] * n,
             "fault_type": ["none"] * n,
         })

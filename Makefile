@@ -1,18 +1,18 @@
-.PHONY: help install train test run-dashboard run-api run-evaluate docker-build docker-up docker-down clean lint
+.PHONY: help install train test run-api run-frontend run-evaluate docker-build docker-up docker-down clean lint
 
 help:
 	@echo "Available commands:"
-	@echo "  make install        - Install dependencies"
+	@echo "  make install        - Install backend dependencies"
+	@echo "  make frontend-install - Install frontend dependencies"
 	@echo "  make train          - Train the model"
 	@echo "  make test           - Run tests"
-	@echo "  make run-dashboard - Run Streamlit dashboard"
 	@echo "  make run-api        - Run FastAPI server"
-	@echo "  make run-evaluate  - Run evaluation"
-	@echo "  make docker-build  - Build Docker images"
-	@echo "  make docker-up     - Start all services"
-	@echo "  make docker-down   - Stop all services"
-	@echo "  make clean         - Remove generated files"
-	@echo "  make lint          - Run linters"
+	@echo "  make run-frontend   - Run Vite frontend"
+	@echo "  make run-evaluate   - Run evaluation"
+	@echo "  make docker-build   - Build Docker images"
+	@echo "  make docker-up      - Start all services"
+	@echo "  make clean          - Remove generated files"
+	@echo "  make lint           - Run linters"
 
 install:
 	pip install -r requirements.txt
@@ -26,11 +26,14 @@ test:
 test-cov:
 	python -m pytest tests/ --cov=. --cov-report=html
 
-run-dashboard:
-	python -m streamlit run dashboard.py
+frontend-install:
+	cd frontend && npm install
 
 run-api:
 	uvicorn api:app --reload --port 8000
+
+run-frontend:
+	cd frontend && npm run dev
 
 run-evaluate:
 	python evaluate.py
@@ -60,6 +63,8 @@ lint:
 	@python -c "import py_compile; py_compile.compile('model.py', doraise=True)" && echo "model.py OK" || echo "model.py FAILED"
 	@python -c "import py_compile; py_compile.compile('simulator.py', doraise=True)" && echo "simulator.py OK" || echo "simulator.py FAILED"
 	@python -c "import py_compile; py_compile.compile('api.py', doraise=True)" && echo "api.py OK" || echo "api.py FAILED"
-	@python -c "import py_compile; py_compile.compile('dashboard.py', doraise=True)" && echo "dashboard.py OK" || echo "dashboard.py FAILED"
+	@python -c "import py_compile; py_compile.compile('evaluate.py', doraise=True)" && echo "evaluate.py OK" || echo "evaluate.py FAILED"
+	@python -c "import py_compile; py_compile.compile('config.py', doraise=True)" && echo "config.py OK" || echo "config.py FAILED"
+	@python -c "import py_compile; py_compile.compile('utils.py', doraise=True)" && echo "utils.py OK" || echo "utils.py FAILED"
 
 .DEFAULT_GOAL := help

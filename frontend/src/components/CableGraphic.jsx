@@ -1,6 +1,6 @@
 import React from 'react';
 
-const CABLE_LENGTH = 500;
+const CABLE_LENGTH = 3800000; // 3,800 km
 const VB_W = 900;
 const VB_H = 320;
 const MX   = 80;    // margin x
@@ -164,7 +164,7 @@ function Station({ x, label, distLabel }) {
 
 /* ── Mid-route repeater node ─────────────────────────────────────────────── */
 function Repeater({ x, index }) {
-  const dist = Math.round(CABLE_LENGTH * index / 5);
+  const distKm = Math.round((CABLE_LENGTH / 1000) * index / 5);
   return (
     <g>
       <rect x={x - 10} y={CY - 8} width="20" height="16" rx="4"
@@ -177,7 +177,7 @@ function Repeater({ x, index }) {
       </text>
       <text x={x} y={CY + 22} textAnchor="middle"
         fill="rgba(200,240,245,0.18)" fontSize="7" fontFamily="Space Mono, monospace">
-        {dist}m
+        {distKm}km
       </text>
     </g>
   );
@@ -245,8 +245,8 @@ export default function CableGraphic({ faults, healthPct }) {
         <DataPackets hasFault={hasFault} healthPct={healthPct} />
 
         {/* Terminal stations */}
-        <Station x={MX}       label="Station A" distLabel="0 m" />
-        <Station x={VB_W - MX} label="Station B" distLabel={`${CABLE_LENGTH} m`} />
+        <Station x={MX}       label="Station A" distLabel="0 km" />
+        <Station x={VB_W - MX} label="Station B" distLabel={`${CABLE_LENGTH/1000} km`} />
 
         {/* Repeater nodes */}
         {[1, 2, 3, 4].map(k => (
@@ -290,7 +290,7 @@ export default function CableGraphic({ faults, healthPct }) {
               {/* Distance badge */}
               <text x={x} y={CY + 22} textAnchor="middle" fill={fc}
                 fontSize="7.5" fontFamily="Space Mono, monospace" opacity="0.7">
-                {dist}m
+                {dist > 1000 ? `${(dist/1000).toFixed(1)}km` : `${dist.toFixed(0)}m`}
               </text>
             </g>
           );

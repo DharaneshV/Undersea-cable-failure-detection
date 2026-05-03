@@ -87,11 +87,22 @@ class BatchPredictionRequest(BaseModel):
     readings: list[SensorReading]
     batch_id: str = Field(default="batch", description="Batch identifier for tracking")
 
-# Pre-load model on startup
-print("Loading model for fast API inference...")
-detector = CableFaultDetector()
-detector.load()
-print("Model loaded.")
+# Lazy-load model helper
+_detector = None
+
+def get_detector():
+    global _detector
+    if _detector is None:
+        try:
+            log.info("Lazy-loading model for inference...")
+            _detector = CableFaultDetector()
+            _detector.load()
+            log.info("Model loaded successfully.")
+        except Exception as e:
+            log.error(f"Failed to load model: {e}")
+            # We don't raise here to allow the API to stay up, 
+            # but prediction endpoints will fail gracefully.
+    return _detector
 
 def severity_of(score: float, threshold: float) -> tuple[str, str]:
     """Map 1-P(Normal) fault probability to a severity label.
@@ -121,9 +132,10 @@ def get_datasets():
 
 @app.get("/status")
 def status():
+    det = get_detector()
     return {
-        "status": "online",
-        "threshold": detector.threshold,
+        "status": "online" if det else "degraded (model missing)",
+        "threshold": det.threshold if det else 0.0,
         "model_type": "conv_transformer_ae",
         "seq_len": SEQ_LEN,
     }
@@ -132,6 +144,10 @@ def status():
 @app.get("/model/info")
 def model_info():
     """Get detailed model information."""
+    det = get_detector()
+    if not det:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+        
     import os, pickle
     # Try to load cached roc_auc from a sidecar file if it exists
     roc_auc = None
@@ -144,7 +160,7 @@ def model_info():
         "version": "2.0",
         "features": FEATURES,
         "sequence_length": SEQ_LEN,
-        "threshold": detector.threshold,
+        "threshold": det.threshold,
         "roc_auc": roc_auc,
         "dataset": "Azure Predictive Maintenance",
         "architecture": "Conv1D + SinePositionalEncoding + TransformerEncoder × 2 + GlobalAvgPool → Dense(32) bottleneck",
@@ -155,6 +171,10 @@ def model_info():
 @limiter.limit("30/minute")
 async def predict_single(request: Request, reading: SensorReading):
     """Predict anomaly for a single sensor reading."""
+    det = get_detector()
+    if not det:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
     log.info(f"Prediction request: {reading.dict()}")
     
     df = pd.DataFrame([{
@@ -173,14 +193,14 @@ async def predict_single(request: Request, reading: SensorReading):
         "fault_type":         "none",
     }])
     
-    result = detector.predict(df)
+    result = det.predict(df)
     score = float(result["anomaly_score"].iloc[-1])
     
     return {
         "anomaly_score": score,
-        "threshold": detector.threshold,
-        "is_anomaly": score > detector.threshold,
-        "severity": severity_of(score, detector.threshold)[0],
+        "threshold": det.threshold,
+        "is_anomaly": score > det.threshold,
+        "severity": severity_of(score, det.threshold)[0],
         "diagnosis": result["fault_diagnosis"].iloc[-1],
     }
 
@@ -189,6 +209,10 @@ async def predict_single(request: Request, reading: SensorReading):
 @limiter.limit("10/minute")
 async def predict_batch(request: Request, batch: BatchPredictionRequest):
     """Predict anomalies for a batch of sensor readings."""
+    det = get_detector()
+    if not det:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+
     log.info(f"Batch prediction: {len(batch.readings)} readings, batch_id={batch.batch_id}")
     start_time = time.time()
     
@@ -204,8 +228,8 @@ async def predict_batch(request: Request, batch: BatchPredictionRequest):
             detail=f"Need at least {SEQ_LEN} readings for prediction"
         )
     
-    result = detector.predict(df)
-    thr = detector.threshold
+    result = det.predict(df)
+    thr = det.threshold
     
     predictions = []
     for i, row in result.iterrows():
@@ -250,9 +274,10 @@ async def generate_report(request: ReportRequest):
     file_path = f"generated_reports/report_{report_id}.{ext}"
     
     # Add system context to metadata
+    det = get_detector()
     full_meta = {
         "deployment_id": "CABLE-ALPHA-9",
-        "threshold": float(detector.threshold),
+        "threshold": float(det.threshold if det else 0.0),
         "model_version": "2.1.0-transformer",
         "source": request.metadata.get("selected_dataset", "Live Stream"),
         **request.metadata
@@ -300,14 +325,20 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
         if os.path.exists(log_path):
             fault_log = pd.read_csv(log_path).to_dict('records')
 
-        result_full = detector.predict(df_full)
-        thr = detector.threshold
+        det = get_detector()
+        if not det:
+            await websocket.send_text(json.dumps({"error": "Model not loaded on server"}))
+            await websocket.close()
+            return
+
+        result_full = det.predict(df_full)
+        thr = det.threshold
         window = SEQ_LEN
 
         speed_map = {"0.25×": 0.10, "0.5×": 0.05, "1×": 0.02, "2×": 0.01, "5×": 0.004, "Max": 0}
         delay = speed_map.get(speed, 0.01)
         
-        # We can emit more frames over websocket than streamlit could
+        # Emit frames at the configured skip rate for smooth WebSocket streaming
         skip_map = {"0.25×": 1, "0.5×": 1, "1×": 2, "2×": 3, "5×": 8, "Max": 20}
         frame_skip = skip_map.get(speed, 1)
 
@@ -326,10 +357,20 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
             if is_fault and (not detected_faults or detected_faults[-1]["_idx"] < i - 50):
                 dist = match_fault_distance(i, fault_log)
                 sev_label, sev_cls = severity_of(sc, thr)
+                
+                # Calculate XAI for this specific fault
+                feat_errs = {feat: float(row.get(f"err_{feat}", 0)) for feat in FEATURES}
+                tot_err = sum(feat_errs.values())
+                xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
+
                 fault_obj = {
-                    "_idx": i, "ftype_raw": str(ftype), "Time": str(row["timestamp"])[:19],
-                    "fault_type": row["fault_diagnosis"], "Severity": sev_label,
-                    "anomaly_score": round(sc, 4), "est_distance": float(dist)
+                    "_idx": i, 
+                    "timestamp": str(row["timestamp"])[:19],
+                    "fault_type": row["fault_diagnosis"], 
+                    "severity": sev_label,
+                    "anomaly_score": round(sc, 4), 
+                    "estimated_distance_m": float(dist),
+                    "xai_text": xai_text
                 }
                 detected_faults.append(fault_obj)
                 new_fault = fault_obj
@@ -352,14 +393,17 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
                     "index": int(i),
                     "total": int(len(result_full)),
                     "timestamp": str(row["timestamp"])[:19],
-                    "voltage":     round(float(row.get("voltage", 0.0))     if pd.notna(row.get("voltage", 0.0))     else 0.0, 2),
-                    "current":     round(float(row.get("current", 0.0))     if pd.notna(row.get("current", 0.0))     else 0.0, 3),
-                    "temperature": round(float(row.get("temperature", 0.0)) if pd.notna(row.get("temperature", 0.0)) else 0.0, 2),
-                    "vibration":   round(float(row.get("vibration", 0.0))   if pd.notna(row.get("vibration", 0.0))   else 0.0, 4),
-                    # Primary signal: 1 - P(Normal) in [0, 1]
+                    "voltage":             round(float(row.get("voltage", 0.0)), 2),
+                    "current":             round(float(row.get("current", 0.0)), 3),
+                    "temperature":         round(float(row.get("temperature", 0.0)), 2),
+                    "vibration":           round(float(row.get("vibration", 0.0)), 4),
+                    "acoustic_strain":     round(float(row.get("acoustic_strain", 0.0)), 4),
+                    "optical_osnr":        round(float(row.get("optical_osnr", 20.0)), 2),
+                    "optical_ber":         round(float(row.get("optical_ber", 0.0)), 6),
+                    "optical_power":       round(float(row.get("optical_power", 0.0)), 3),
+                    "cable_distance_norm": round(float(row.get("cable_distance_norm", 0.0)), 4),
                     "anomaly_score": round(sc, 5),
                     "threshold":     round(thr, 5),
-                    # Secondary: reconstruction error
                     "recon_error":   round(float(row.get("recon_error", 0.0)) if pd.notna(row.get("recon_error", 0.0)) else 0.0, 5),
                     "is_fault":     is_fault,
                     "is_warning":   is_warning,

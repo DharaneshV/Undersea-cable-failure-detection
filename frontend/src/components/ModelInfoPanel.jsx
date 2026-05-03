@@ -31,16 +31,17 @@ export default function ModelInfoPanel() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(false);
 
-  const fetchInfo = () => {
-    setLoading(true);
-    setError(false);
-    fetch(`${API}/model/info`)
-      .then(r => r.json())
-      .then(d => { setInfo(d); setLoading(false); })
-      .catch(() => { setError(true); setLoading(false); });
-  };
-
-  useEffect(() => { fetchInfo(); }, []);
+  useEffect(() => {
+    const fetchInfo = () => {
+      setLoading(true);
+      setError(false);
+      fetch(`${API}/model/info`)
+        .then(r => r.json())
+        .then(d => { setInfo(d); setLoading(false); })
+        .catch(() => { setError(true); setLoading(false); });
+    };
+    fetchInfo();
+  }, []);
 
   if (loading) {
     return (
@@ -67,7 +68,6 @@ export default function ModelInfoPanel() {
   const features  = Array.isArray(info.features) ? info.features : [];
   const seqLen    = info.sequence_length ?? '—';
   const version   = info.version ?? '2.0';
-  const modelType = (info.model_type ?? 'conv_transformer_ae').replace(/_/g, ' ');
 
   return (
     <div className="model-info-panel">

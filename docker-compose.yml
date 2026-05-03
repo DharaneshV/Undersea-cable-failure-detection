@@ -1,17 +1,4 @@
-version: '3.8'
-
 services:
-  dashboard:
-    build: .
-    ports:
-      - "8501:8501"
-    volumes:
-      - ./saved_model:/app/saved_model
-      - ./datasets:/app/datasets
-    environment:
-      - PYTHONUNBUFFERED=1
-    command: python -m streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
-
   api:
     build: .
     ports:
@@ -19,9 +6,21 @@ services:
     volumes:
       - ./saved_model:/app/saved_model
       - ./datasets:/app/datasets
+      - ./generated_reports:/app/generated_reports
     environment:
       - PYTHONUNBUFFERED=1
+      - TF_CPP_MIN_LOG_LEVEL=2
     command: uvicorn api:app --host 0.0.0.0 --port 8000
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://api:8000
+    depends_on:
+      - api
 
   train:
     build: .

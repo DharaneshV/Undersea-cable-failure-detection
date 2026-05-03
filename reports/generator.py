@@ -66,22 +66,24 @@ class ReportGenerator:
         if not fault_log:
             elements.append(Paragraph("No faults detected during this operation window.", styles['Italic']))
         else:
-            data = [["Timestamp", "Type", "Severity", "Est. Distance (m)"]]
+            data = [["Timestamp", "Type", "Severity", "Dist (m)", "Score", "Top Drivers"]]
             for f in fault_log:
                 data.append([
                     f.get("timestamp", "N/A"),
                     f.get("fault_type", "None").replace("_", " ").title(),
                     f.get("severity", "Medium").upper(),
-                    f"{f.get('estimated_distance_m', 0):.1f}"
+                    f"{f.get('estimated_distance_m', 0):.1f}",
+                    f"{f.get('anomaly_score', 0):.4f}",
+                    f.get("xai_text", "N/A")
                 ])
 
-            t_log = Table(data, colWidths=[120, 150, 80, 120])
+            t_log = Table(data, colWidths=[100, 100, 70, 60, 60, 150])
             t_log.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), HexColor("#00ffc8")),
                 ('TEXTCOLOR', (0, 0), (-1, 0), HexColor("#020912")),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
                 ('GRID', (0, 0), (-1, -1), 0.5, "grey"),
                 ('ROWBACKGROUNDS', (0, 1), (-1, -1), ["whitesmoke", "white"])

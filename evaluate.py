@@ -4,7 +4,7 @@ Evaluation analytics for the LSTM Autoencoder.
 
 Exposes two interfaces:
   1. run_evaluation(result_df, threshold, fault_log=None)
-       → returns a dict of Plotly figures + metric values. Called by dashboard.py.
+       → returns a dict of Plotly figures + metric values. Called by api.py.
   2. CLI entrypoint (python evaluate.py)
        → generates matplotlib PNGs, metrics JSON, and summary report.
 """
@@ -248,7 +248,7 @@ def _build_signal_view(result_df, fault_log=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Public API — called by dashboard.py
+# Public API — called by api.py
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_evaluation(
@@ -283,8 +283,13 @@ def run_evaluation(
     valid = result_df.dropna(subset=["anomaly_score"])
     scores = valid["anomaly_score"].values
 
-    has_labels = "label" in valid.columns and valid["label"].nunique() > 1
+    # Robust check for classification metrics: requires both classes (0 and 1)
+    unique_labels = valid["label"].unique() if "label" in valid.columns else []
+    has_labels = len(unique_labels) > 1
     results["has_labels"] = has_labels
+    
+    if "label" in valid.columns and not has_labels and len(unique_labels) == 1:
+        log.warning(f"Evaluation set contains only one class ({unique_labels[0]}). Skipping classification metrics.")
 
     # Always-available charts
     results["score_timeline_fig"] = _build_score_timeline(result_df, threshold)

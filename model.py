@@ -448,7 +448,7 @@ if __name__ == "__main__":
     detector = CableFaultDetector()
     detector.train(df)
     
-    # Save ROC-AUC for the dashboard
+    # Save ROC-AUC for the API model info endpoint
     result = detector.predict(df)
     metrics = detector.evaluate(result)
     

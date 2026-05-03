@@ -1,6 +1,6 @@
 """
 utils.py
-Shared utility functions used across model.py, evaluate.py, and dashboard.py.
+Shared utility functions used across model.py, evaluate.py, and api.py.
 Keeping them here avoids circular imports and mid-file import hacks.
 """
 

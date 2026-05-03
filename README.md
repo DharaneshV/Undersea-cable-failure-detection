@@ -1,17 +1,34 @@
 # Undersea Cable Fault Detection System
-### LSTM Autoencoder · Real-time anomaly detection · No hardware required
+### Conv-Transformer Autoencoder · Real-time anomaly detection · Multi-modal sensor fusion
 
 ---
 
 ## Project overview
 
-This system simulates an undersea cable monitoring network. It generates
-realistic sensor data (voltage, current, temperature, vibration), injects
-fault events (cable cuts, anchor drag, overheating, insulation failure),
-and uses an **LSTM Autoencoder** to detect anomalies in real time.
+This system monitors undersea fibre-optic and electrical cables in real time.
+It ingests multi-modal telemetry (voltage, current, temperature, vibration,
+acoustic strain, optical OSNR/BER/power) and uses a **Conv-Transformer
+Autoencoder** with a classification head to detect and localise faults.
 
-The live dashboard streams the simulation with fault alerts, estimated
-fault distance (Time Domain Reflectometry), and rich visual analytics.
+The live dashboard (React + Vite) streams data via WebSocket from a FastAPI
+backend, with forensic PDF/CSV reporting and XAI-driven root-cause analysis.
+
+---
+
+## Architecture
+
+```
+┌────────────┐      WebSocket       ┌──────────────────┐
+│  React UI  │ ◄──────────────────► │  FastAPI Backend  │
+│  (Vite)    │      REST API        │  (api.py)         │
+└────────────┘                      └────────┬─────────┘
+                                             │
+                                    ┌────────▼─────────┐
+                                    │  Conv-Transformer │
+                                    │  Autoencoder      │
+                                    │  (model.py)       │
+                                    └──────────────────┘
+```
 
 ---
 
@@ -19,38 +36,65 @@ fault distance (Time Domain Reflectometry), and rich visual analytics.
 
 | File | Purpose |
 |------|---------|
-| `simulator.py` | Generates synthetic cable sensor data + injects faults |
-| `model.py`     | LSTM Autoencoder training, inference, save/load |
-| `dashboard.py` | Streamlit live monitoring dashboard (enhanced) |
-| `evaluate.py`  | Generates evaluation plots (ROC, confusion matrix, etc.) |
-| `requirements.txt` | Python dependencies |
+| `api.py`       | FastAPI backend with WebSocket streaming & model inference |
+| `frontend/`    | React (Vite) dashboard with real-time charts & forensic tools |
+| `model.py`     | Conv-Transformer Autoencoder architecture (9 features + 10 domain channels) |
+| `config.py`    | Single source of truth for all hyper-parameters and constants |
+| `simulator.py` | Generates multi-modal sensor data with fault injection |
+| `evaluate.py`  | Performance analytics (ROC, PR, Confusion Matrix) |
+| `reports/`     | PDF/CSV forensic report generator |
+| `tests/`       | API and model integration tests |
 
 ---
 
-## Setup (first time)
+## Setup & Running
 
+### 1. Backend (FastAPI)
 ```bash
-# 1. Create a virtual environment (recommended)
+# Create venv and install
 python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
-
-# 2. Install dependencies
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# Run the API
+make run-api
+# or: uvicorn api:app --reload --port 8000
+```
+
+### 2. Frontend (React + Vite)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173** for the dashboard.
+
+### 3. Docker (full stack)
+```bash
+docker compose up -d        # API + Frontend
+docker compose ps           # verify services
+docker compose down         # teardown
 ```
 
 ---
 
-## Run the dashboard
+## Input Features (9 sensors + domain encoding)
 
-```bash
-python -m streamlit run dashboard.py
-```
+| Feature | Domain | Unit |
+|---------|--------|------|
+| `voltage` | Electrical | V |
+| `current` | Electrical | A |
+| `temperature` | Electrical | °C |
+| `vibration` | Mechanical | g |
+| `acoustic_strain` | Acoustic | µε |
+| `optical_osnr` | Optical | dB |
+| `optical_ber` | Optical | log₁₀ |
+| `optical_power` | Optical | dBm |
+| `cable_distance_norm` | Spatial | [0–1] |
 
-Open your browser at **http://localhost:8501**
-
-- Use the sidebar to set simulation duration, fault count, and playback speed
-- Click **▶ Start Simulation**
-- Watch the LSTM model detect faults in real time
+The model also receives a **10-channel one-hot domain embedding** (`cable_domain_id`)
+for a total of 19 input features per timestep.
 
 ---
 
@@ -58,59 +102,41 @@ Open your browser at **http://localhost:8501**
 
 | Feature | Description |
 |---------|-------------|
-| 🎨 Premium dark theme | Glassmorphism styling with Inter font |
-| 📊 Custom metric cards | Live voltage, current, temperature, vibration gauges |
-| 💚 Health gauge | Real-time cable health score (0–100%) |
-| 🔌 Cable route diagram | Animated SVG showing fault locations on the cable |
-| ⚠️ Fault severity | Faults classified as Low / Medium / High / Critical |
-| 📈 Enhanced charts | Dark-themed Plotly charts with fault-region shading |
-| 🗂 Fault log table | Styled, color-coded log of detected faults |
-| 📥 CSV export | Download detected faults as a report |
-| 🧠 Model metrics | Precision, recall, F1-score after simulation |
-| 📋 Summary panel | End-of-simulation statistics and health assessment |
+| 🌊 Real-time Streaming | High-frequency WebSocket updates from the backend |
+| 📊 Metrics Grid | Live voltage, current, temperature, vibration, and optical OSNR |
+| 🔌 Cable Route SVG | Animated path showing fault localisation (TDR estimate) |
+| 🧠 Transformer XAI | Explanation of which sensors triggered the anomaly |
+| 📄 Forensic Reports | Generate PDF/CSV reports of detected events |
+| 🌓 Dark Mode | Premium glassmorphism UI with bioluminescent accents |
 
 ---
 
-## Run model training only (no UI)
+## How the model works
 
-```bash
-python model.py
+```
+Input window (60 timesteps × 19 features)
+       ↓
+  [Conv1D + SinePositionalEncoding + TransformerEncoder × 3]
+       ↓
+  Dual-head output:
+    1. Reconstruction → MAE loss (anomaly score = 1 − P(Normal))
+    2. Classification → 4-class (Normal, Short, Open, High-Z)
+       ↓
+  Threshold calibrated via F1-sweep on validation set
 ```
 
-This trains the LSTM autoencoder on normal data, evaluates it on fault
-data, and prints classification metrics (precision, recall, F1, ROC-AUC).
+Trained on **normal data** — faults produce high reconstruction error.
 
 ---
 
-## How the LSTM Autoencoder works
+## Fault types
 
-```
-Normal training data
-       ↓
-  [LSTM Encoder] → compressed representation (bottleneck)
-       ↓
-  [LSTM Decoder] → reconstructs original signal
-       ↓
-  Reconstruction error (MAE) on normal data → set threshold (95th percentile)
-
-At inference:
-  New sensor window → model reconstructs it
-  If error > threshold → ANOMALY (fault detected)
-```
-
-The model is trained **only on normal data** — no fault labels needed.
-Faults cause large reconstruction errors because the model has never seen them.
-
----
-
-## Fault types simulated
-
-| Fault | Sensor signature |
-|-------|-----------------| 
-| Cable cut | Sudden voltage/current collapse |
-| Anchor drag | Vibration spike + voltage dip |
-| Overheating | Rising temperature + current |
-| Insulation failure | Slow voltage leak + temperature rise |
+| Fault | Class | Sensor signature |
+|-------|-------|-----------------|
+| Cable cut | Open Circuit | Sudden voltage/current collapse |
+| Anchor drag | High-Impedance | Vibration spike + voltage dip |
+| Overheating | High-Impedance | Rising temperature + current |
+| Insulation failure | Short Circuit | Slow voltage leak + temperature rise |
 
 ---
 
@@ -122,5 +148,16 @@ Signal speed in fibre ≈ 2×10⁸ m/s.
 Time delay is estimated from the sample index of the detected anomaly.
 
 ---
-l.
-7. Health monitoring — Rolling window health metric for operational awareness.
+
+## Make targets
+
+```bash
+make install          # Install backend dependencies
+make frontend-install # Install frontend dependencies
+make train            # Train the model
+make test             # Run pytest suite
+make run-api          # Start FastAPI server
+make run-frontend     # Start Vite dev server
+make lint             # Syntax-check all Python modules
+make clean            # Remove generated files
+```
