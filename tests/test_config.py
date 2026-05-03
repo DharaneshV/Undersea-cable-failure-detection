@@ -37,8 +37,13 @@ class TestConfigValues:
         assert set(FAULT_TYPES) == expected
 
     def test_features_valid(self):
-        expected = {"voltage", "current", "temperature", "vibration"}
+        expected = {
+            "voltage", "current", "temperature", "vibration",
+            "acoustic_strain", "optical_osnr", "optical_ber",
+            "optical_power", "cable_distance_norm",
+        }
         assert set(FEATURES) == expected
+        assert len(FEATURES) == 9  # 9 sensor features (domain channels are separate)
 
     def test_seq_len_positive(self):
         assert SEQ_LEN > 0

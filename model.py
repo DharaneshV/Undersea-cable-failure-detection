@@ -105,7 +105,7 @@ class TransformerEncoderBlock(Layer):
         ffn2_shape = (None, seq_len, self.ff_dim)  # ffn2 input is ffn1 output
         norm_shape = (None, seq_len, d_model)
 
-        self._mha.build(mha_shape, mha_shape)   # MHA needs (query_shape, value_shape)
+        self._mha.build([mha_shape, mha_shape])  # MHA needs [query_shape, value_shape]
         self._norm1.build(norm_shape)
         self._ffn1.build(ffn1_shape)
         self._ffn2.build(ffn2_shape)

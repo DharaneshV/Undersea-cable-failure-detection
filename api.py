@@ -11,7 +11,6 @@ from functools import wraps
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from pydantic import BaseModel, Field, validator
 from model import CableFaultDetector
 from config import SEQ_LEN, FEATURES, NORMAL_PROFILES
@@ -21,7 +20,11 @@ from reports import ReportGenerator
 # In-memory storage for report links (for session duration)
 REPORTS_DB = {}
 
-limiter = Limiter(key_func=get_remote_address, config_filename=None)
+def _safe_remote_address(request: Request) -> str:
+    """Rate-limit key function that handles TestClient (no real client socket)."""
+    return (request.client.host if request.client else None) or "127.0.0.1"
+
+limiter = Limiter(key_func=_safe_remote_address, config_filename=None)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -277,7 +280,7 @@ async def generate_report(request: ReportRequest):
     det = get_detector()
     full_meta = {
         "deployment_id": "CABLE-ALPHA-9",
-        "threshold": float(det.threshold if det else 0.0),
+        "threshold": float(det.threshold or 0.0) if det else 0.0,
         "model_version": "2.1.0-transformer",
         "source": request.metadata.get("selected_dataset", "Live Stream"),
         **request.metadata
