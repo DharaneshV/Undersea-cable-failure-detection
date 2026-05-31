@@ -33,8 +33,13 @@ function StatusPill({ label, state }) {
 function ProgressBar({ current, total }) {
   const pct = total > 0 ? (current / total) * 100 : 0;
   return (
-    <div className="progress-container">
-      <div className="progress-bar" style={{ width: `${pct}%` }} />
+    <div className="progress-wrap">
+      <div className="progress-track">
+        <div className="progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="progress-label">
+        {current.toLocaleString()} / {total.toLocaleString()} samples
+      </span>
     </div>
   );
 }
@@ -119,7 +124,7 @@ async function exportPDF(faultLog, datasetName) {
 }
 
 /* ── Forensic Analysis Tab ──────────────────────────────────────────────── */
-function ForensicAnalysisTab({ faultLog, datasetName }) {
+function ForensicAnalysisTab({ faultLog, datasetName, cableLength, onExport }) {
   if (faultLog.length === 0) {
     return (
       <div className="panel forensic-card">
@@ -129,72 +134,71 @@ function ForensicAnalysisTab({ faultLog, datasetName }) {
   }
 
   const latest = faultLog[0];
-  const uniqueTypes = [...new Set(faultLog.map(f => f.fault_type))];
+  const distM = parseFloat(latest.estimated_distance_m ?? 0);
+  const distA = distM;
+  const distB = cableLength - distM;
+  const severityStr = latest.severity?.toUpperCase() || "UNKNOWN";
   
   return (
-    <div className="analysis-grid">
-      <div className="analysis-main">
-        <div className="panel forensic-card">
-          <div className="forensic-title">
-            <Activity size={20} color="var(--bio)" />
-            Root Cause Diagnosis
+    <div className="panel forensic-card" style={{ marginTop: '20px' }}>
+      <div className="forensic-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Activity size={20} color="var(--bio)" />
+          Forensic Incident Report
+        </div>
+        <button className="glass-btn" onClick={onExport} style={{ fontSize: '12px', padding: '6px 12px' }}>
+          <Download size={14} style={{ marginRight: '6px' }} />
+          Export PDF
+        </button>
+      </div>
+      <div className="forensic-body">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+          <div style={{ background: 'var(--depth-2)', padding: '16px', borderRadius: '12px' }}>
+            <strong style={{ color: 'var(--txt)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Incident Timeline</strong><br/><br/>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ color: 'var(--txt-muted)' }}>First Detected:</span> <span>{faultLog[faultLog.length-1]?.timestamp || '—'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--txt-muted)' }}>Last Recorded:</span> <span>{latest.timestamp || '—'}</span>
+            </div>
           </div>
-          <div className="forensic-body">
-            Based on the latest event at <strong>{latest.timestamp}</strong>, the system identified a 
-            <span className="sev-badge sev-critical" style={{margin: '0 8px'}}>
-              {latest.fault_type?.replace(/_/g, ' ')}
-            </span> 
-            with high confidence. 
-            <p style={{marginTop: '12px'}}>
-              The anomaly was primarily driven by <strong>{latest.xai_text}</strong> readings 
-              deviating from the established baseline. Localisation algorithms place the 
-              structural compromise at approximately <strong>{latest.estimated_distance_m}m</strong> from Station A.
-            </p>
-          </div>
-          <div className="stat-pill-group">
-            <div className="stat-pill">Model Confidence: 99.1%</div>
-            <div className="stat-pill">Sensor Fusion: Active</div>
-            <div className="stat-pill">Domain: {datasetName}</div>
+          <div style={{ background: 'var(--depth-2)', padding: '16px', borderRadius: '12px' }}>
+            <strong style={{ color: 'var(--txt)', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Location Analysis</strong><br/><br/>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <span style={{ color: 'var(--txt-muted)' }}>Distance from Station A:</span> <span>{(distA / 1000).toFixed(2)} km</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--txt-muted)' }}>Distance from Station B:</span> <span>{(distB / 1000).toFixed(2)} km</span>
+            </div>
           </div>
         </div>
+        
+        <p style={{ marginBottom: '24px', lineHeight: '1.8' }}>
+          <strong>Root Cause Diagnosis:</strong> The system identified a 
+          <span className={`sev-badge sev-${severityStr.toLowerCase()}`} style={{margin: '0 10px'}}>
+            {latest.fault_type?.replace(/_/g, ' ')}
+          </span> 
+          with a peak anomaly score of <strong>{latest.anomaly_score?.toFixed(4)}</strong>. 
+          The anomaly was primarily driven by <strong>{latest.xai_text}</strong>.
+        </p>
 
-        <div className="panel">
-          <div className="panel-hdr"><div className="panel-hdr-left">Event Distribution</div></div>
-          <div style={{height: '200px', display: 'flex', alignItems: 'flex-end', gap: '4px', padding: '10px 0'}}>
-            {faultLog.slice(0, 40).map((f, i) => (
-              <div key={i} style={{
-                flex: 1, 
-                height: `${f.anomaly_score * 100}%`, 
-                background: f.anomaly_score > 0.5 ? 'var(--danger)' : 'var(--warn)',
-                borderRadius: '2px 2px 0 0',
-                opacity: 0.8
-              }} />
-            ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+          <div style={{ borderLeft: `3px solid ${severityStr === 'CRITICAL' ? 'var(--danger)' : severityStr === 'HIGH' ? '#ff7b92' : 'var(--warn)'}`, padding: '12px 16px', background: 'rgba(255, 255, 255, 0.5)', borderRadius: '0 8px 8px 0' }}>
+            <strong style={{ color: 'var(--txt)' }}>Risk Assessment</strong><br/>
+            {severityStr === 'CRITICAL' ? 'Immediate intervention required. High risk of total signal loss or physical structural failure.' : 
+             severityStr === 'HIGH' ? 'Service severely degraded. Maintenance dispatch recommended within 24 hours.' :
+             'Minor degradation detected. Monitor closely for escalation.'}
           </div>
-          <div className="header-sub" style={{textAlign: 'center', marginTop: '8px'}}>Anomaly Score Density (Last 40 Events)</div>
+          <div style={{ borderLeft: '3px solid var(--bio)', padding: '12px 16px', background: 'rgba(255, 255, 255, 0.5)', borderRadius: '0 8px 8px 0' }}>
+            <strong style={{ color: 'var(--txt)' }}>Recommended Action</strong><br/>
+            Dispatch ROV to {(distA / 1000).toFixed(2)} km mark. Inspect physical casing for {latest.fault_type?.replace(/_/g, ' ')}.
+          </div>
         </div>
       </div>
-
-      <div className="analysis-side">
-        <div className="panel">
-          <div className="panel-hdr"><div className="panel-hdr-left">Summary Stats</div></div>
-          <div style={{display: 'flex', flexDirection: 'column', gap: '12px'}}>
-            <div>
-              <div className="header-sub">Total Events</div>
-              <div className="header-title" style={{fontSize: '24px'}}>{faultLog.length}</div>
-            </div>
-            <div>
-              <div className="header-sub">Unique Faults</div>
-              <div className="header-title" style={{fontSize: '24px'}}>{uniqueTypes.length}</div>
-            </div>
-            <div>
-              <div className="header-sub">Avg Score</div>
-              <div className="header-title" style={{fontSize: '24px'}}>
-                {(faultLog.reduce((acc, f) => acc + f.anomaly_score, 0) / faultLog.length).toFixed(3)}
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="stat-pill-group" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--glass-border)' }}>
+        <div className="stat-pill">Confidence: 99.1%</div>
+        <div className="stat-pill">Domain: {datasetName}</div>
+        <div className="stat-pill">Severity: {severityStr}</div>
       </div>
     </div>
   );
@@ -239,7 +243,9 @@ function FaultHistoryTab({ faultLog, threshold, selectedDS }) {
           const fs = severityOf(f.anomaly_score);
           return (
             <div key={idx} className="fault-log-row">
-              <span className="log-time">{f.timestamp?.split(' ')[1] ?? '—'}</span>
+              <span className="log-time">
+                {f.timestamp ? (f.timestamp.includes('T') ? f.timestamp.split('T')[1] : f.timestamp.split(' ')[1])?.slice(0, 8) : '—'}
+              </span>
               <span className="log-type">{(f.fault_type ?? '').replace(/_/g, ' ')}</span>
               <span><span className={`sev-badge ${fs.cls}`}>{f.severity || fs.label}</span></span>
               <span className="log-dist">{f.estimated_distance_m}</span>
@@ -466,29 +472,24 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── Progress Bar ────────────────────────────────────────────────── */}
-      {isPlaying && <ProgressBar current={progress.current} total={progress.total} />}
-
-      {/* ── Alert Banner (fault or warning) ──────────────────────────────── */}
-      {latestData && (latestData.is_fault || latestData.is_warning) && (
-        <div className={`alert-banner ${latestData.is_fault ? 'fault-alert' : 'warning-alert'}`}>
-          <div className={`alert-icon-wrap ${latestData.is_fault ? 'alert-icon-fault' : 'alert-icon-warning'}`}>
-            {latestData.is_fault ? '🚨' : '⚠️'}
-          </div>
-          <div className="alert-body">
-            <div className="alert-headline">
-              {latestData.is_fault ? 'FAULT DETECTED' : 'DEGRADING — EARLY WARNING'}
-              {sev && <span className={`sev-badge ${sev.cls}`}>{sev.label}</span>}
-            </div>
-            <div className="alert-detail">
-              Score: {latestData.anomaly_score?.toFixed(5)}&nbsp;/&nbsp;
-              Threshold: {latestData.threshold?.toFixed(5)}&nbsp;&nbsp;|&nbsp;&nbsp;
-              Ratio: {(latestData.anomaly_score / latestData.threshold).toFixed(2)}×
-            </div>
-            <div className="alert-meta">📡 Driven by: {latestData.xai_text}</div>
-          </div>
-        </div>
+      {/* ── Progress Bar + Samples Counter ─────────────────────────────── */}
+      {(isPlaying || progress.current > 0) && (
+        <ProgressBar current={progress.current} total={progress.total} />
       )}
+
+      {/* ── Stable Status Indicator ─────────────────────────────────────── */}
+      <div className="status-indicator-panel glass-card">
+        <div className="status-indicator-content">
+          <div className={`status-dot ${!latestData ? '' : latestData.is_fault ? 'red' : latestData.is_warning ? 'yellow' : 'green'}`} 
+               style={{ width: 12, height: 12, display: 'inline-block', marginRight: '10px' }} />
+          <span className="status-indicator-text" style={{ fontSize: '14px', fontWeight: '700', letterSpacing: '0.02em' }}>
+            {!latestData ? 'System Ready — Waiting for Stream' : latestData.is_fault ? 'Fault Active' : latestData.is_warning ? 'Warning: Degrading Signal' : 'Cable Operating Normally'}
+          </span>
+        </div>
+        {latestData?.is_fault && sev && (
+          <div className={`sev-badge ${sev.cls}`}>{sev.label}</div>
+        )}
+      </div>
 
       {/* ── Metrics ─────────────────────────────────────────────────────── */}
       <MetricsGrid data={latestData} prevData={prevData} />
@@ -555,7 +556,7 @@ export default function App() {
                 <div className="panel-hdr">
                   <div className="panel-hdr-left">Cable route — fault localisation</div>
                 </div>
-                <CableGraphic faults={faultLog} healthPct={latestData?.health_pct} />
+                <CableGraphic faults={faultLog} healthPct={latestData?.health_pct} cableLength={latestData?.cable_length} />
               </div>
 
               {/* Telemetry + anomaly charts */}
@@ -591,22 +592,30 @@ export default function App() {
                   </div>
                 </div>
                 <div className="fault-log-header">
-                  <span>Time</span><span>Type</span><span>Sev.</span><span>m</span>
+                  <span>Time</span><span>Type</span><span>Sev.</span><span>Dist</span>
                 </div>
                 {faultLog.length === 0 ? (
-                  <div className="empty-log">System nominal.</div>
+                  <div className="empty-log">System nominal — no faults detected.</div>
                 ) : (
-                  faultLog.slice(0, 30).map((f, idx) => {
-                    const fs = severityOf(f.anomaly_score);
-                    return (
-                      <div key={idx} className="fault-log-row">
-                        <span className="log-time">{f.timestamp?.split(' ')[1] ?? '—'}</span>
-                        <span className="log-type">{(f.fault_type ?? '').replace(/_/g, ' ')}</span>
-                        <span><span className={`sev-badge ${fs.cls}`}>{f.severity || fs.label}</span></span>
-                        <span className="log-dist">{f.estimated_distance_m}</span>
-                      </div>
-                    );
-                  })
+                  <div className="fault-log-scroll">
+                    {faultLog.map((f, idx) => {
+                      const fs = severityOf(f.anomaly_score);
+                      const distM = parseFloat(f.estimated_distance_m ?? 0);
+                      const distLabel = distM > 1000
+                        ? `${(distM / 1000).toFixed(1)} km`
+                        : `${distM.toFixed(0)} m`;
+                      return (
+                        <div key={idx} className="fault-log-row">
+                          <span className="log-time">
+                            {f.timestamp ? (f.timestamp.includes('T') ? f.timestamp.split('T')[1] : f.timestamp.split(' ')[1])?.slice(0, 8) : '—'}
+                          </span>
+                          <span className="log-type">{(f.fault_type ?? '').replace(/_/g, ' ')}</span>
+                          <span><span className={`sev-badge ${fs.cls}`}>{f.severity || fs.label}</span></span>
+                          <span className="log-dist">{distLabel}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </div>
@@ -616,7 +625,12 @@ export default function App() {
 
       {/* ── Analysis Tab ────────────────────────────────────────────────── */}
       {activeTab === 'analysis' && (
-        <ForensicAnalysisTab faultLog={faultLog} datasetName={selectedDS} />
+        <ForensicAnalysisTab 
+          faultLog={faultLog} 
+          datasetName={selectedDS} 
+          cableLength={latestData?.cable_length ?? 3800000} 
+          onExport={() => exportPDF(faultLog, selectedDS)}
+        />
       )}
 
       {/* ── Fault History Tab ────────────────────────────────────────────── */}

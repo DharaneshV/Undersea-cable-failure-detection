@@ -106,7 +106,12 @@ function SensorChart({ sensor, data }) {
           <XAxis
             dataKey="timestamp" hide={false}
             ticks={ticks}
-            tickFormatter={v => v ? String(v).split(' ')[1]?.slice(0, 5) ?? '' : ''}
+            tickFormatter={v => {
+              if (!v) return '';
+              const strVal = String(v);
+              const part = strVal.includes('T') ? strVal.split('T')[1] : strVal.split(' ')[1];
+              return part?.slice(0, 5) ?? '';
+            }}
             {...AXIS_STYLE}
             axisLine={false} tickLine={false}
           />

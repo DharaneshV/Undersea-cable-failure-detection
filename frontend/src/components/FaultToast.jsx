@@ -27,12 +27,14 @@ function severityColor(sev) {
 }
 
 export default function FaultToast({ fault, onDismiss }) {
-  const sev       = fault?.Severity || 'High';
+  const sev       = fault?.severity || 'High';
   const sevCls    = SEVERITY_CLS[sev] || 'severity-critical';
   const iconColor = severityColor(sev);
   const faultType = fault?.fault_type || 'Unknown';
-  const location  = fault?.est_distance != null ? `${fault.est_distance} m` : '—';
-  const time      = fault?.Time ? fault.Time.split(' ')[1] || fault.Time : '—';
+  const location  = fault?.estimated_distance_m != null ? `${Math.round(fault.estimated_distance_m)} m` : '—';
+  const time      = fault?.timestamp 
+    ? (fault.timestamp.includes('T') ? fault.timestamp.split('T')[1] : fault.timestamp.split(' ')[1])?.slice(0, 8) || fault.timestamp
+    : '—';
 
   return (
     <div className={`fault-toast ${sevCls}`} role="alert">

@@ -1,10 +1,9 @@
 import React from 'react';
 
-const CABLE_LENGTH = 3800000; // 3,800 km
 const VB_W = 900;
 const VB_H = 320;
 const MX   = 80;    // margin x
-const CY   = 130;   // cable y position — higher to leave room for seabed
+const CY   = 130;   // cable y position
 const CW   = VB_W - 2 * MX;
 
 const FAULT_COLORS = {
@@ -12,15 +11,22 @@ const FAULT_COLORS = {
   anchor_drag:        '#ffab40',
   overheating:        '#ff7d45',
   insulation_failure: '#a855f7',
+  'Short Circuit':    '#ff4d6d',
+  'Open Circuit':     '#ffab40',
+  'High-Impedance':   '#a855f7',
+  Normal:             '#00ffc8',
 };
 
-function getFaultColor(ftypeRaw) {
-  return FAULT_COLORS[ftypeRaw] ?? '#ff4d6d';
+function getFaultColor(ftype) {
+  if (!ftype) return '#ff4d6d';
+  // Normalise: lowercase, strip spaces
+  const key = ftype.trim().toLowerCase().replace(/ /g, '_');
+  // Try direct match first, then normalised
+  return FAULT_COLORS[ftype] ?? FAULT_COLORS[key] ?? '#ff4d6d';
 }
 
 /* ── Seabed terrain ──────────────────────────────────────────────────────── */
 function SeabedTerrain() {
-  // Organic undulating seafloor 70px below the cable
   const floorY  = CY + 70;
   const pts = [
     [MX        , floorY + 12],
@@ -39,12 +45,10 @@ function SeabedTerrain() {
   return (
     <>
       <defs>
-        {/* Seabed depth gradient — dark teal to near-black */}
         <linearGradient id="seabed-grad" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%"   stopColor="#0a2035" stopOpacity="0.95" />
           <stop offset="100%" stopColor="#020912" stopOpacity="1"    />
         </linearGradient>
-        {/* Caustic light blobs — bioluminescent patches on seafloor */}
         <radialGradient id="caustic-1" cx="30%" cy="80%" r="15%">
           <stop offset="0%"   stopColor="#00ffc8" stopOpacity="0.12" />
           <stop offset="100%" stopColor="#00ffc8" stopOpacity="0"    />
@@ -53,14 +57,12 @@ function SeabedTerrain() {
           <stop offset="0%"   stopColor="#00b8d4" stopOpacity="0.10" />
           <stop offset="100%" stopColor="#00b8d4" stopOpacity="0"    />
         </radialGradient>
-        {/* slight wave turbulence on seafloor edge */}
         <filter id="seafloor-blur">
           <feTurbulence type="fractalNoise" baseFrequency="0.015 0.03" numOctaves="2" result="noise" />
           <feDisplacementMap in="SourceGraphic" in2="noise" scale="4" />
         </filter>
       </defs>
 
-      {/* Depth ruler lines */}
       {[0, 20, 40, 60].map((d, i) => {
         const y = CY + (i + 1) * 18;
         return (
@@ -80,20 +82,17 @@ function SeabedTerrain() {
         );
       })}
 
-      {/* Caustic light patches */}
       <rect x={MX} y={floorY} width={CW} height={VB_H - floorY}
         fill="url(#caustic-1)" />
       <rect x={MX} y={floorY} width={CW} height={VB_H - floorY}
         fill="url(#caustic-2)" />
 
-      {/* Seabed fill */}
       <polygon
         points={`${MX},${VB_H} ${polyPts} ${VB_W - MX},${VB_H}`}
         fill="url(#seabed-grad)"
         filter="url(#seafloor-blur)"
         opacity="0.85"
       />
-      {/* Seafloor surface highlight — thin bioluminescent line */}
       <polyline
         points={polyPts}
         fill="none"
@@ -106,7 +105,6 @@ function SeabedTerrain() {
 
 /* ── Animated data packets ───────────────────────────────────────────────── */
 function DataPackets({ hasFault, healthPct }) {
-  // Color shifts from bio-green → danger-red as health drops
   const color = hasFault ? '#ff4d6d'
               : healthPct != null && healthPct < 50 ? '#ffab40'
               : '#00ffc8';
@@ -123,11 +121,9 @@ function DataPackets({ hasFault, healthPct }) {
       </defs>
       {[0, 1, 2].map(i => (
         <g key={i}>
-          {/* Packet core */}
           <circle r="4" fill={color} opacity="0.95" filter="url(#packet-glow)">
             <animateMotion dur={dur} begin={`${i * 1.07}s`} repeatCount="indefinite" path={cablePath} />
           </circle>
-          {/* Expanding wake ring */}
           <circle r="6" fill="none" stroke={color} strokeWidth="1" opacity="0">
             <animateMotion dur={dur} begin={`${i * 1.07}s`} repeatCount="indefinite" path={cablePath} />
             <animate attributeName="opacity" values="0.55;0"  dur="0.9s" begin={`${i * 1.07}s`} repeatCount="indefinite" />
@@ -147,14 +143,13 @@ function Station({ x, label, distLabel }) {
         fill="rgba(0,255,200,0.07)" stroke="#00ffc8" strokeWidth="1.5">
         <animate attributeName="stroke-opacity" values="0.5;0.9;0.5" dur="3.5s" repeatCount="indefinite"/>
       </rect>
-      {/* Sonar icon */}
       <circle cx={x} cy={CY} r="5" fill="none" stroke="#00ffc8" strokeWidth="1.5" opacity="0.8" />
       <circle cx={x} cy={CY} r="2" fill="#00ffc8" opacity="0.9" />
       <text x={x} y={CY + 32} textAnchor="middle" fill="rgba(200,240,245,0.5)"
         fontSize="9" fontFamily="Oxanium, sans-serif" fontWeight="600">
         {label}
       </text>
-      <text x={x} y={CY - 28} textAnchor="middle" fill="rgba(0,255,200,0.4)"
+      <text x={x} y={CY - 28} textAnchor="middle" fill="var(--txt-muted)"
         fontSize="8" fontFamily="Space Mono, monospace">
         {distLabel}
       </text>
@@ -163,8 +158,8 @@ function Station({ x, label, distLabel }) {
 }
 
 /* ── Mid-route repeater node ─────────────────────────────────────────────── */
-function Repeater({ x, index }) {
-  const distKm = Math.round((CABLE_LENGTH / 1000) * index / 5);
+function Repeater({ x, index, cableLength }) {
+  const distKm = Math.round((cableLength / 1000) * index / 5);
   return (
     <g>
       <rect x={x - 10} y={CY - 8} width="20" height="16" rx="4"
@@ -176,7 +171,7 @@ function Repeater({ x, index }) {
         R{index}
       </text>
       <text x={x} y={CY + 22} textAnchor="middle"
-        fill="rgba(200,240,245,0.18)" fontSize="7" fontFamily="Space Mono, monospace">
+        fill="var(--txt-muted)" fontSize="7" fontFamily="Space Mono, monospace">
         {distKm}km
       </text>
     </g>
@@ -184,8 +179,20 @@ function Repeater({ x, index }) {
 }
 
 /* ── Main export ─────────────────────────────────────────────────────────── */
-export default function CableGraphic({ faults, healthPct }) {
+export default function CableGraphic({ faults, healthPct, cableLength = 3800000 }) {
   const hasFault = faults && faults.length > 0;
+
+  // Deduplicate: keep last occurrence per fault_type to avoid marker pile-up
+  const uniqueFaults = [];
+  const seenTypes = new Set();
+  for (const f of (faults ?? [])) {
+    const key = f.fault_type ?? 'Unknown';
+    if (!seenTypes.has(key)) {
+      seenTypes.add(key);
+      uniqueFaults.push(f);
+    }
+    if (uniqueFaults.length >= 5) break;
+  }
 
   return (
     <div style={{ width: '100%', overflowX: 'auto' }}>
@@ -197,14 +204,12 @@ export default function CableGraphic({ faults, healthPct }) {
         role="img"
       >
         <defs>
-          {/* Cable gradient — bio-teal → deep-blue → bio-teal */}
           <linearGradient id="cable-grad" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%"   stopColor="#00ffc8" stopOpacity="0.9" />
             <stop offset="30%"  stopColor="#00b8d4" stopOpacity="0.75" />
             <stop offset="70%"  stopColor="#00b8d4" stopOpacity="0.75" />
             <stop offset="100%" stopColor="#00ffc8" stopOpacity="0.9" />
           </linearGradient>
-          {/* Shadow glow under cable */}
           <linearGradient id="cable-shadow-grad" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%"   stopColor="#00ffc8" stopOpacity="0.12" />
             <stop offset="50%"  stopColor="#0084ff" stopOpacity="0.08" />
@@ -220,11 +225,8 @@ export default function CableGraphic({ faults, healthPct }) {
           </filter>
         </defs>
 
-        {/* Deep ocean background wash */}
-        <rect x="0" y="0" width={VB_W} height={VB_H}
-          fill="rgba(2,9,18,0)" />
+        <rect x="0" y="0" width={VB_W} height={VB_H} fill="rgba(2,9,18,0)" />
 
-        {/* Seabed terrain (with caustics, ruler, sediment) */}
         <SeabedTerrain />
 
         {/* Cable shadow glow */}
@@ -241,27 +243,32 @@ export default function CableGraphic({ faults, healthPct }) {
           filter="url(#cable-glow)"
         />
 
-        {/* Animated data packets */}
         <DataPackets hasFault={hasFault} healthPct={healthPct} />
 
-        {/* Terminal stations */}
         <Station x={MX}       label="Station A" distLabel="0 km" />
-        <Station x={VB_W - MX} label="Station B" distLabel={`${CABLE_LENGTH/1000} km`} />
+        <Station x={VB_W - MX} label="Station B" distLabel={`${cableLength/1000} km`} />
 
-        {/* Repeater nodes */}
         {[1, 2, 3, 4].map(k => (
-          <Repeater key={k} x={MX + CW * k / 5} index={k} />
+          <Repeater key={k} x={MX + CW * k / 5} index={k} cableLength={cableLength} />
         ))}
 
-        {/* Fault markers */}
-        {(faults ?? []).slice(0, 5).map((f, i) => {
-          const dist = parseFloat(f.est_distance ?? 0);
-          const x    = MX + (dist / CABLE_LENGTH) * CW;
-          const fc   = getFaultColor(f.ftype_raw);
-          // Alternate labels above/below to prevent overlap
+        {/* ── Fault markers — use correct field names from API ─────────── */}
+        {uniqueFaults.map((f, i) => {
+          // API sends: estimated_distance_m, fault_type
+          const dist = parseFloat(f.estimated_distance_m ?? f.est_distance ?? 0);
+          // Clamp distance to cable bounds so marker stays on cable
+          const clampedDist = Math.max(0, Math.min(cableLength, dist));
+          // Proportional X position along cable
+          const x = MX + (clampedDist / cableLength) * CW;
+          const fc = getFaultColor(f.fault_type ?? f.ftype_raw);
+          // Alternate label rows to avoid overlap
           const labelY = i % 2 === 0 ? CY - 24 : CY - 42;
+          const distLabel = clampedDist > 1000
+            ? `${(clampedDist / 1000).toFixed(1)} km`
+            : `${clampedDist.toFixed(0)} m`;
+
           return (
-            <g key={i} role="graphics-symbol" aria-label={`${f.fault_type} at ${dist}m`}>
+            <g key={i} role="graphics-symbol" aria-label={`${f.fault_type} at ${clampedDist}m`}>
               {/* Pressure-wave outer ring */}
               <circle cx={x} cy={CY} r="10" fill="none" stroke={fc} strokeWidth="1.5" opacity="0.25">
                 <animate attributeName="r"       values="8;26;8"   dur="2s"   repeatCount="indefinite"/>
@@ -287,10 +294,10 @@ export default function CableGraphic({ faults, healthPct }) {
                 fontSize="8" fontWeight="700" fontFamily="Oxanium, sans-serif">
                 {(f.fault_type ?? 'Fault').replace(/_/g, ' ')}
               </text>
-              {/* Distance badge */}
+              {/* Distance badge — shows actual calculated position */}
               <text x={x} y={CY + 22} textAnchor="middle" fill={fc}
                 fontSize="7.5" fontFamily="Space Mono, monospace" opacity="0.7">
-                {dist > 1000 ? `${(dist/1000).toFixed(1)}km` : `${dist.toFixed(0)}m`}
+                {distLabel}
               </text>
             </g>
           );

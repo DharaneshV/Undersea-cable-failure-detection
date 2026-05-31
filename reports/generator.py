@@ -90,9 +90,23 @@ class ReportGenerator:
             ]))
             elements.append(t_log)
 
+        elements.append(Spacer(1, 40))
+        elements.append(Paragraph("Recommended Mitigation Protocols", styles['Heading2']))
+        if not fault_log:
+            elements.append(Paragraph("No mitigation required. System operating nominally.", styles['Normal']))
+        else:
+            highest_sev = max(fault_log, key=lambda x: {"Low":1, "Medium":2, "High":3, "Critical":4}.get(x.get("severity", "Medium"), 0)).get("severity", "Medium")
+            if highest_sev == "Critical":
+                proto = "<b>CRITICAL PROTOCOL:</b> Immediate dispatch of maritime ROV (Remotely Operated Vehicle) to the calculated fault coordinates is mandatory. Prepare for potential deep-sea splice repair or physical casing replacement."
+            elif highest_sev == "High":
+                proto = "<b>HIGH PRIORITY:</b> Schedule maintenance dispatch within 24 hours. Physical degradation is severe and total signal loss or power arc is imminent."
+            else:
+                proto = "<b>WARNING:</b> Soft anomalies detected. Continue to monitor the segment closely, cross-reference with secondary telemetry, and schedule preventative inspection."
+            elements.append(Paragraph(proto, styles['Normal']))
+
         elements.append(Spacer(1, 50))
         footer_style = ParagraphStyle('Footer', parent=styles['Normal'], alignment=1)
-        elements.append(Paragraph("End of Report", footer_style))
+        elements.append(Paragraph("End of Forensic Report", footer_style))
 
         doc.build(elements)
         return output_path

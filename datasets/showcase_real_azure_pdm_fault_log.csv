@@ -1,0 +1,2 @@
+fault_type,start_sample,duration_samples,fault_distance_m,severity
+cable_cut,1500,501,250.0,Critical

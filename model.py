@@ -386,8 +386,11 @@ class CableFaultDetector:
     def evaluate(self, result: pd.DataFrame) -> dict:
         valid = result.dropna(subset=["anomaly_score"])
         y_true, y_pred, scores = valid["label"].values, valid["predicted_label"].values.astype(int), valid["anomaly_score"].values
-        report = classification_report(y_true, y_pred, target_names=["normal", "fault"], output_dict=True)
-        auc = roc_auc_score(y_true, scores)
+        report = classification_report(y_true, y_pred, labels=[0, 1], target_names=["normal", "fault"], output_dict=True)
+        try:
+            auc = float(roc_auc_score(y_true, scores))
+        except ValueError:
+            auc = 0.5
         log.info(f"ROC-AUC: {auc:.4f}")
         return {"report": report, "roc_auc": auc, "threshold": self.threshold}
 

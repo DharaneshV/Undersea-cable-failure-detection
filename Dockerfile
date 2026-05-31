@@ -21,6 +21,7 @@ COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
 # Create necessary directories
 RUN mkdir -p saved_model datasets evaluation_plots generated_reports
+RUN touch .env
 
 ENV PYTHONUNBUFFERED=1
 ENV TF_CPP_MIN_LOG_LEVEL=2

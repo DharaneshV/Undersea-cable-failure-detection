@@ -1,0 +1,4 @@
+fault_type,start_sample,duration_samples,fault_distance_m,severity
+insulation_failure,400,300,2736000.0,Warning
+anchor_drag,700,300,2736000.0,High
+cable_cut,1000,200,2736000.0,Critical

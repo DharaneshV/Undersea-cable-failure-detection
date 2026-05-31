@@ -1,0 +1,4 @@
+fault_type,start_sample,duration_samples,fault_distance_m,severity
+overheating,400,300,1330000.0,Warning
+insulation_failure,700,300,1330000.0,High
+cable_cut,1000,200,1330000.0,Critical

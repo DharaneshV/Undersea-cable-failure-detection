@@ -42,6 +42,8 @@ datasets/azure_pdm_full_fault_log.csv
 .DS_Store
 Thumbs.db
 desktop.ini
+~$*
+*.tmp
 
 # ── Logs ──────────────────────────────────────────────────────
 *.log

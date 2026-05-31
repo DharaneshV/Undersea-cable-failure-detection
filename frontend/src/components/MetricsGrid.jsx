@@ -1,13 +1,12 @@
 import React from 'react';
 
 /* ── Sea-themed sensor colour palette ────────────────────────────────────── */
-// Each sensor maps to a distinct oceanic hue
 const SENSOR_OCEAN = {
-  voltage:     { color: '#0084ff', bar: 'var(--current)' },   // deep current blue
-  current:     { color: '#00ffc8', bar: 'var(--bio)'     },   // bioluminescent
-  temperature: { color: '#ffab40', bar: 'var(--warn)'    },   // hydrothermal amber
-  vibration:   { color: '#ff4d6d', bar: 'var(--danger)'  },   // danger red
-  anomaly:     { color: null,      bar: null              },   // dynamic — set by health
+  voltage:     { color: '#0084ff', bar: 'var(--current)' },
+  current:     { color: '#0ea5e9', bar: 'var(--bio)'     },
+  temperature: { color: '#f59e0b', bar: 'var(--warn)'    },
+  vibration:   { color: '#f43f5e', bar: 'var(--danger)'  },
+  anomaly:     { color: null,      bar: null              },
 };
 
 /* ── SVG icon components ─────────────────────────────────────────────────── */
@@ -53,100 +52,119 @@ function AlertIcon({ color }) {
     </svg>
   );
 }
+function OsnrIcon({ color }) {
+  return (
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"
+      fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 10h3l3 9 5-15 3 9h5" />
+    </svg>
+  );
+}
+function BerIcon({ color }) {
+  return (
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"
+      fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="15" y="3" width="6" height="6" rx="1" />
+      <rect x="3" y="15" width="6" height="6" rx="1" />
+      <path d="M16 16l4 4m0-4l-4 4" strokeWidth="2.5" />
+      <path d="M9 6h6M6 9v6" strokeWidth="1.5" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+function PowerIcon({ color }) {
+  return (
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24"
+      fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="12" r="3" />
+      <path d="M9 12h13M17 8l5 4-5 4" />
+      <path d="M3 8l1-1M3 16l1 1M6 5V3M6 19v2" strokeWidth="1.5" />
+    </svg>
+  );
+}
 
-/* ── Health gauge — SVG semicircle arc ───────────────────────────────────── */
-const ARC_RADIUS    = 45;
-const ARC_CX        = 60;
-const ARC_CY        = 62;
-const CIRCUMFERENCE = Math.PI * ARC_RADIUS;  // half-circle arc length
-
+/* ── Health Bar ───────────────────────────────────────────────────────────── */
 function healthColor(hp) {
-  if (hp > 70) return '#00ffc8';  // bio-green — healthy
-  if (hp > 40) return '#ffab40';  // amber    — warning
-  return '#ff4d6d';               // danger   — critical
+  if (hp > 70) return '#10b981';
+  if (hp > 40) return '#f59e0b';
+  return '#f43f5e';
 }
 function healthMsg(hp) {
-  if (hp > 70) return 'HEALTHY';
-  if (hp > 40) return 'DEGRADED';
-  return 'CRITICAL';
+  if (hp > 70) return 'Healthy';
+  if (hp > 40) return 'Degraded';
+  return 'Critical';
 }
 
-/* Thin secondary track arc path builder */
-const arcPath = `M ${ARC_CX - ARC_RADIUS},${ARC_CY} A ${ARC_RADIUS} ${ARC_RADIUS} 0 0 1 ${ARC_CX + ARC_RADIUS},${ARC_CY}`;
-
-function HealthGauge({ hp, msg }) {
+function HealthBar({ hp }) {
   const pct   = Math.max(0, Math.min(100, hp ?? 100));
-  const fill  = (pct / 100) * CIRCUMFERENCE;
-  const gap   = CIRCUMFERENCE - fill;
   const color = healthColor(pct);
+  const msg   = healthMsg(pct);
 
   return (
     <div
       className="health-card"
       role="meter"
-      aria-valuenow={Math.round(hp ?? 0)}
+      aria-valuenow={Math.round(pct)}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-label="Cable health"
     >
       <div className="health-label-top">System Health</div>
-      <svg viewBox="0 0 120 76" width="150" height="90" aria-label={`Health ${pct.toFixed(0)}%`}>
-        {/* Track ring */}
-        <path d={arcPath} fill="none" stroke="rgba(0,255,200,0.08)" strokeWidth="10" strokeLinecap="round"/>
-        {/* Tick marks every 20% */}
-        {[0, 0.2, 0.4, 0.6, 0.8, 1.0].map((t, i) => {
-          const angle = Math.PI * t;           // 0 → π (left → right)
-          const ix = ARC_CX - ARC_RADIUS * Math.cos(angle);
-          const iy = ARC_CY - ARC_RADIUS * Math.sin(angle);
-          const ox = ARC_CX - (ARC_RADIUS + 6) * Math.cos(angle);
-          const oy = ARC_CY - (ARC_RADIUS + 6) * Math.sin(angle);
-          return (
-            <line key={i}
-              x1={ix} y1={iy} x2={ox} y2={oy}
-              stroke="rgba(0,184,212,0.3)" strokeWidth="1.5"
-            />
-          );
-        })}
-        {/* Filled arc — transitions smoothly */}
-        <path
-          d={arcPath}
-          fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
-          strokeDasharray={`${fill} ${gap}`}
-          style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4,0,0.2,1), stroke 0.6s ease' }}
+
+      {/* Big percentage number */}
+      <div
+        className="health-pct-value"
+        style={{
+          color,
+          transition: 'color 0.6s ease',
+        }}
+      >
+        {pct.toFixed(0)}
+        <span className="health-pct-sign">%</span>
+      </div>
+
+      {/* Progress bar track */}
+      <div className="health-bar-track">
+        <div
+          className="health-bar-fill"
+          style={{
+            width: `${pct}%`,
+            background: `linear-gradient(90deg, ${color}cc, ${color})`,
+            boxShadow: `0 0 8px ${color}66`,
+            transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1), background 0.6s ease, box-shadow 0.6s ease',
+          }}
         />
-        {/* Glow duplicate */}
-        <path
-          d={arcPath}
-          fill="none" stroke={color} strokeWidth="14" strokeLinecap="round"
-          strokeDasharray={`${fill} ${gap}`}
-          opacity="0.12"
-          style={{ transition: 'stroke-dasharray 0.8s cubic-bezier(0.4,0,0.2,1), stroke 0.6s ease' }}
-        />
-        {/* Centre percentage */}
-        <text x={ARC_CX} y={ARC_CY - 6} textAnchor="middle"
-          fill={color} fontSize="22" fontWeight="700"
-          fontFamily="Space Mono, monospace"
-          style={{ transition: 'fill 0.6s ease' }}>
-          {pct.toFixed(0)}
-        </text>
-        <text x={ARC_CX} y={ARC_CY + 12} textAnchor="middle"
-          fill="rgba(200,240,245,0.3)" fontSize="7" fontWeight="700"
-          letterSpacing="2" fontFamily="Oxanium, sans-serif">
-          HEALTH %
-        </text>
-      </svg>
-      <div className="health-label-status" style={{ color }}>{msg}</div>
+      </div>
+
+      {/* Tick labels */}
+      <div className="health-bar-ticks">
+        <span>0</span>
+        <span>25</span>
+        <span>50</span>
+        <span>75</span>
+        <span>100</span>
+      </div>
+
+      <div
+        className="health-label-status"
+        style={{ color, transition: 'color 0.6s ease' }}
+      >
+        {msg}
+      </div>
     </div>
   );
 }
 
 /* ── Metric card ─────────────────────────────────────────────────────────── */
 const ICONS = {
-  voltage:     c => <BoltIcon    color={c} />,
-  current:     c => <CurrentIcon color={c} />,
-  temperature: c => <ThermoIcon  color={c} />,
-  vibration:   c => <WaveIcon    color={c} />,
-  anomaly:     c => <AlertIcon   color={c} />,
+  voltage:       c => <BoltIcon    color={c} />,
+  current:       c => <CurrentIcon color={c} />,
+  temperature:   c => <ThermoIcon  color={c} />,
+  vibration:     c => <WaveIcon    color={c} />,
+  anomaly:       c => <AlertIcon   color={c} />,
+  optical_osnr:  c => <OsnrIcon    color={c} />,
+  optical_ber:   c => <BerIcon     color={c} />,
+  optical_power: c => <PowerIcon   color={c} />,
 };
 
 function formatValue(key, val) {
@@ -182,9 +200,7 @@ function MetricCard({ field, label, value, prevValue, unit, color, pct, animDela
       <div className="metric-value" style={{ color }}>{formatValue(field, value)}</div>
       <div className="metric-unit">{unit}</div>
       <div className={`metric-delta ${arrow.cls}`}>{arrow.symbol}</div>
-      {/* Ambient glow at card base */}
       <div className="metric-glow" style={{ background: `linear-gradient(to top, ${color}28, transparent)` }}/>
-      {/* Coloured sensor bar at card bottom */}
       <div className="metric-bar"
         style={{
           width: `${pct}%`,
@@ -212,36 +228,38 @@ export default function MetricsGrid({ data, prevData }) {
   if (!data) {
     return (
       <div className="metrics-grid">
+        <div className="health-card">
+          <div className="health-label-top">System Health</div>
+          <div className="health-pct-value" style={{ color: 'var(--txt-muted)' }}>
+            --<span className="health-pct-sign">%</span>
+          </div>
+          <div className="health-bar-track">
+            <div className="health-bar-fill" style={{ width: '0%', background: 'var(--depth-3)' }} />
+          </div>
+          <div className="health-bar-ticks">
+            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+          </div>
+          <div className="health-label-status" style={{ color: 'var(--txt-muted)' }}>Waiting</div>
+        </div>
         <SkeletonCard delay={0}   />
         <SkeletonCard delay={60}  />
         <SkeletonCard delay={120} />
         <SkeletonCard delay={180} />
         <SkeletonCard delay={240} />
-        {/* Empty health gauge */}
-        <div className="health-card">
-          <div className="health-label-top">System Health</div>
-          <svg viewBox="0 0 120 76" width="150" height="90" aria-hidden="true">
-            <path d={arcPath} fill="none" stroke="rgba(0,255,200,0.07)" strokeWidth="10" strokeLinecap="round"/>
-          </svg>
-          <div className="health-label-status" style={{ color: 'var(--txt-muted)' }}>WAITING</div>
-        </div>
       </div>
     );
   }
 
   const isBad  = data.is_fault;
   const isWarn = data.is_warning;
-  // Anomaly card colour responds to state
-  const scColor = isBad ? '#ff4d6d' : isWarn ? '#ffab40' : '#00ffc8';
+  const scColor = isBad ? '#f43f5e' : isWarn ? '#f59e0b' : '#10b981';
 
   const pct = (v, max) => Math.max(0, Math.min(100, (v / max) * 100));
 
   return (
     <div className="metrics-grid">
-      <HealthGauge
-        hp={data.health_pct ?? 100}
-        msg={healthMsg(data.health_pct ?? 100)}
-      />
+      <HealthBar hp={data.health_pct ?? 100} />
+
       {data.cable_domain_id === 1 ? (
         <>
           <MetricCard
@@ -268,16 +286,20 @@ export default function MetricsGrid({ data, prevData }) {
             unit="A" color={SENSOR_OCEAN.current.color} pct={pct(data.current, 10)} animDelay={120}
           />
           <MetricCard
-            field="temperature" label="Temperature" value={data.temperature} prevValue={prevData?.temperature}
+            field="temperature" label="Temp" value={data.temperature} prevValue={prevData?.temperature}
             unit="°C" color={SENSOR_OCEAN.temperature.color} pct={pct(data.temperature, 60)} animDelay={180}
           />
         </>
       )}
       <MetricCard
+        field="vibration" label="Vibration" value={data.vibration} prevValue={prevData?.vibration}
+        unit="g" color={SENSOR_OCEAN.vibration.color} pct={pct(Math.abs(data.vibration ?? 0), 2)} animDelay={240}
+      />
+      <MetricCard
         field="anomaly" label="Anomaly Score" value={data.anomaly_score} prevValue={prevData?.anomaly_score}
-        unit={`thr ${data.threshold?.toFixed(5) ?? '--'}`}
+        unit={`thr ${data.threshold?.toFixed(4) ?? '--'}`}
         color={scColor}
-        pct={pct(data.anomaly_score, data.threshold * 2)} animDelay={240}
+        pct={pct(data.anomaly_score, (data.threshold ?? 0.1) * 2)} animDelay={300}
         anomalyActive={isBad}
       />
     </div>

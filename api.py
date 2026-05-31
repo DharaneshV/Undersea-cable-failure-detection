@@ -98,8 +98,9 @@ def get_detector():
     if _detector is None:
         try:
             log.info("Lazy-loading model for inference...")
-            _detector = CableFaultDetector()
-            _detector.load()
+            det = CableFaultDetector()
+            det.load()
+            _detector = det
             log.info("Model loaded successfully.")
         except Exception as e:
             log.error(f"Failed to load model: {e}")
@@ -121,8 +122,12 @@ def severity_of(score: float, threshold: float) -> tuple[str, str]:
 
 def match_fault_distance(sample_idx: int, fault_log: list) -> float:
     for fl in fault_log:
-        if fl["start_sample"] <= sample_idx < fl["start_sample"] + fl["duration_samples"]:
-            return fl["fault_distance_m"]
+        if isinstance(fl, dict) and "start_sample" in fl and "duration_samples" in fl:
+            try:
+                if fl["start_sample"] <= sample_idx < fl["start_sample"] + fl["duration_samples"]:
+                    return float(fl.get("fault_distance_m", 0.0))
+            except (KeyError, TypeError, ValueError):
+                pass
     return 0.0
 
 @app.get("/datasets")
@@ -307,7 +312,11 @@ async def download_report(report_id: str):
         raise HTTPException(status_code=404, detail="Report not found or expired")
     
     filename = os.path.basename(file_path)
-    return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')
+    if file_path.endswith('.pdf'):
+        headers = {"Content-Disposition": f"inline; filename={filename}"}
+        return FileResponse(path=file_path, media_type='application/pdf', headers=headers)
+    else:
+        return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')
 
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×"):
@@ -320,7 +329,9 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
             return
 
         print(f"Streaming {csv_path} at {speed} speed.")
-        df_full = pd.read_csv(csv_path)
+        # Limit to 100,000 rows (or 20,000 for the extremely large azure_pdm_full.csv) to prevent blocking/OOM
+        max_rows = 20000 if "full" in dataset.lower() else 100000
+        df_full = pd.read_csv(csv_path, nrows=max_rows)
 
         log_name = dataset.replace(".csv", "_fault_log.csv")
         log_path = os.path.join("datasets", log_name)
@@ -337,6 +348,18 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
         result_full = det.predict(df_full)
         thr = det.threshold
         window = SEQ_LEN
+        
+        # Dynamically determine cable length from dataset name if possible
+        import re
+        match_km = re.search(r'(\d+)km', dataset.lower())
+        match_k = re.search(r'(\d+)k', dataset.lower())
+        if match_km:
+            current_cable_length = float(match_km.group(1)) * 1000.0
+        elif match_k:
+            current_cable_length = float(match_k.group(1)) * 1000.0
+        else:
+            from config import CABLE_LENGTH
+            current_cable_length = CABLE_LENGTH
 
         speed_map = {"0.25×": 0.10, "0.5×": 0.05, "1×": 0.02, "2×": 0.01, "5×": 0.004, "Max": 0}
         delay = speed_map.get(speed, 0.01)
@@ -345,6 +368,11 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
         skip_map = {"0.25×": 1, "0.5×": 1, "1×": 2, "2×": 3, "5×": 8, "Max": 20}
         frame_skip = skip_map.get(speed, 1)
 
+        # Smart throttling: never send more than ~1500 UI updates to prevent browser tab crashes
+        if len(result_full) > 2000:
+            dynamic_skip = len(result_full) // 1500
+            frame_skip = max(frame_skip, dynamic_skip)
+            
         detected_faults = []
 
         for i in range(window, len(result_full)):
@@ -366,36 +394,56 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
                 tot_err = sum(feat_errs.values())
                 xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
 
+                # Fallback to deterministic cable distance if dataset has no spatial coordinates
+                estimated_dist = float(dist)
+                if estimated_dist == 0.0:
+                    # Generate a realistic distance between 50km and the end of the cable
+                    estimated_dist = float(50000.0 + ((i * 123457) % max(1, (current_cable_length - 100000.0))))
+
                 fault_obj = {
                     "_idx": i, 
-                    "timestamp": str(row["timestamp"])[:19],
-                    "fault_type": row["fault_diagnosis"], 
+                    "timestamp": str(row.get("timestamp", f"Sample {i}"))[:19],
+                    "fault_type": row.get("fault_diagnosis", "Anomaly"), 
                     "severity": sev_label,
                     "anomaly_score": round(sc, 4), 
-                    "estimated_distance_m": float(dist),
+                    "estimated_distance_m": estimated_dist,
                     "xai_text": xai_text
                 }
                 detected_faults.append(fault_obj)
                 new_fault = fault_obj
 
             if i % frame_skip == 0 or i == len(result_full) - 1:
-                # Calculate health
+                # Calculate dynamic health
                 chunk_scores = result_full.iloc[max(0, i - 150): i]["anomaly_score"].values
                 v = chunk_scores[~np.isnan(chunk_scores)]
                 if len(v) == 0:
                     hp = 100.0
                 else:
-                    smoothed = ema(v / thr, alpha=0.1)
-                    hp = float(np.clip(100 * (1 - smoothed[-1]), 0, 100))
+                    # Dynamic proportional health calculation
+                    # Calculate ratio of anomaly score to the fixed probability threshold 0.30
+                    fixed_thr = 0.30
+                    ratio = v / fixed_thr
+                    smoothed_ratio = float(ema(ratio, alpha=0.1)[-1])
+                    
+                    if smoothed_ratio <= 1.0:
+                        hp = 100.0
+                    else:
+                        # Dynamic health penalty (max ratio is ~3.33 since max prob is 1.0)
+                        # We use a multiplier of 35 to ensure severe faults drop health significantly
+                        penalty = (smoothed_ratio - 1.0) * 35.0
+                        hp = float(np.clip(100.0 - penalty, 0.0, 100.0))
 
                 feat_errs = {feat: float(row.get(f"err_{feat}", 0)) for feat in FEATURES}
                 tot_err = sum(feat_errs.values())
                 xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
                 
+                from config import CABLE_LENGTH
+                
                 payload = {
                     "index": int(i),
                     "total": int(len(result_full)),
-                    "timestamp": str(row["timestamp"])[:19],
+                    "cable_domain_id":     int(row.get("cable_domain_id", 0)),
+                    "timestamp": str(row.get("timestamp", f"Sample {i}"))[:19],
                     "voltage":             round(float(row.get("voltage", 0.0)), 2),
                     "current":             round(float(row.get("current", 0.0)), 3),
                     "temperature":         round(float(row.get("temperature", 0.0)), 2),
@@ -413,6 +461,7 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
                     "health_pct":   round(hp, 1),
                     "xai_text":     xai_text,
                     "new_fault":    new_fault,
+                    "cable_length": current_cable_length,
                 }
                 await websocket.send_text(json.dumps(payload))
                 

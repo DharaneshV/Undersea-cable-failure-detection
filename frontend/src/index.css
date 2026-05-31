@@ -311,37 +311,19 @@ body {
 }
 .progress-label { font-family: var(--mono); font-size: 10px; color: var(--txt-muted); white-space: nowrap; }
 
-/* ── Alert Banner ────────────────────────────────────────────────────────── */
-.alert-banner {
-  display: flex; align-items: flex-start; gap: 16px;
-  border-radius: var(--radius-md); padding: 16px 20px; margin-bottom: 20px;
-  backdrop-filter: blur(12px); animation: fade-up 0.3s ease;
+/* ── Stable Status Indicator ─────────────────────────────────────────────── */
+.status-indicator-panel {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 20px; margin-bottom: 20px;
+  border-radius: var(--radius-md);
+  height: 48px; /* Fixed height to prevent layout shifts */
 }
-.fault-alert {
-  background: linear-gradient(135deg, rgba(255,77,109,0.10) 0%, rgba(255,77,109,0.03) 100%);
-  border: 1px solid rgba(255,77,109,0.28);
-  border-left: 4px solid var(--danger);
-  animation: fault-pulse 2s infinite;
+.status-indicator-content {
+  display: flex; align-items: center;
 }
-.warning-alert {
-  background: linear-gradient(135deg, rgba(255,171,64,0.10) 0%, rgba(255,171,64,0.03) 100%);
-  border: 1px solid rgba(255,171,64,0.22);
-  border-left: 4px solid var(--warn);
+.status-indicator-text {
+  color: var(--txt);
 }
-.alert-icon-wrap {
-  width: 38px; height: 38px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 18px;
-}
-.alert-icon-fault   { background: rgba(255,77,109,0.12); border: 1px solid rgba(255,77,109,0.3); }
-.alert-icon-warning { background: rgba(255,171,64,0.12); border: 1px solid rgba(255,171,64,0.3); }
-.alert-body { flex: 1; min-width: 0; }
-.alert-headline {
-  font-size: 13px; font-weight: 700; color: var(--txt);
-  letter-spacing: -0.01em; margin-bottom: 4px;
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-}
-.alert-detail { font-size: 11px; color: var(--txt-sec); font-family: var(--mono); }
-.alert-meta   { font-size: 11px; color: var(--txt-muted); margin-top: 6px; }
 
 /* ── Severity Badges ─────────────────────────────────────────────────────── */
 .sev-badge {
@@ -355,10 +337,10 @@ body {
 .sev-warning  { background: rgba(255,171,64,0.08); color: var(--warn);    border: 1px solid rgba(255,171,64,0.2); }
 .sev-low      { background: rgba(0,255,200,0.08);  color: var(--bio);     border: 1px solid rgba(0,255,200,0.22); }
 
-/* ── Metrics Grid ────────────────────────────────────────────────────────── */
+/* ── Metrics Grid ────────────────────────────────────────────── */
 .metrics-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr 1fr;
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -418,31 +400,58 @@ body {
   opacity: 0.07; pointer-events: none;
 }
 
-/* ── Health Gauge Card ───────────────────────────────────────────────────── */
+/* ── Health Bar Card ─────────────────────────────────────────────────────── */
 .health-card {
   background: var(--surface-2);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 14px 10px;
+  padding: 16px 14px 12px;
   box-shadow: var(--shadow-card);
   animation: fade-up 0.4s ease both;
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s ease;
-  min-height: 140px;
+  min-height: 140px; gap: 6px; width: 100%;
 }
-.health-card:hover { 
-  border-color: var(--glass-border-bright); 
+.health-card:hover {
+  border-color: var(--glass-border-bright);
   transform: translateY(-2px);
   box-shadow: var(--shadow-card-hover);
 }
 .health-label-top {
   font-size: 9px; font-weight: 700; letter-spacing: 2px;
-  text-transform: uppercase; color: var(--txt-muted); margin-bottom: 4px;
+  text-transform: uppercase; color: var(--txt-muted);
+}
+/* Big percentage display */
+.health-pct-value {
+  font-size: 36px; font-weight: 800; font-family: var(--mono);
+  line-height: 1; letter-spacing: -0.03em;
+}
+.health-pct-sign {
+  font-size: 18px; font-weight: 600; opacity: 0.6; margin-left: 1px;
+}
+/* Progress bar track */
+.health-bar-track {
+  width: 100%; height: 8px;
+  background: var(--depth-3);
+  border-radius: 100px; overflow: hidden;
+  margin: 2px 0;
+}
+.health-bar-fill {
+  height: 100%; border-radius: 100px;
+  will-change: width;
+}
+/* Tick labels under bar */
+.health-bar-ticks {
+  display: flex; justify-content: space-between;
+  width: 100%; font-size: 8px;
+  color: var(--txt-muted); font-family: var(--mono);
+  opacity: 0.6;
 }
 .health-label-status {
   font-size: 10px; font-weight: 700; letter-spacing: 2px;
-  text-transform: uppercase; margin-top: 4px; font-family: var(--mono);
+  text-transform: uppercase; font-family: var(--mono);
 }
+
 
 /* ── Analysis Tab Styles ─────────────────────────────────────────────────── */
 .analysis-grid {
@@ -558,6 +567,19 @@ body {
   color: var(--txt-muted); font-size: 12px; font-style: italic;
   font-family: var(--mono);
 }
+/* Scrollable fault log container */
+.fault-log-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Custom scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--depth-3) transparent;
+}
+.fault-log-scroll::-webkit-scrollbar { width: 5px; }
+.fault-log-scroll::-webkit-scrollbar-track { background: transparent; }
+.fault-log-scroll::-webkit-scrollbar-thumb { background: var(--depth-3); border-radius: 100px; }
 
 /* ── Toast System ────────────────────────────────────────────────────────── */
 .toast-container {
@@ -689,7 +711,7 @@ body {
   .tab-bar { width: 100%; }
   .tab-btn { flex: 1; text-align: center; }
   .fault-toast { min-width: unset; max-width: calc(100vw - 40px); }
-  .metrics-grid { grid-template-columns: 1fr; }
+  .fault-log-scroll { max-height: 240px; min-height: 240px; flex: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
