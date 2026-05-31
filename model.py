@@ -426,18 +426,26 @@ class CableFaultDetector:
 
     def load(self, path: str = "saved_model") -> None:
         custom = {"SinePositionalEncoding": SinePositionalEncoding, "TransformerEncoderBlock": TransformerEncoderBlock}
+        
+        # Fallback to checkpoints directory if saved_model lacks Keras files
+        load_path = path
+        if path == "saved_model" and not os.path.exists(f"{path}/conv_transformer_multitask.keras") and not os.path.exists(f"{path}/best_model.keras"):
+            if os.path.exists("checkpoints/best_model.keras"):
+                log.info("saved_model not found or empty. Falling back to checkpoints directory.")
+                load_path = "checkpoints"
+
         # Try both common filenames
-        model_file = f"{path}/conv_transformer_multitask.keras"
+        model_file = f"{load_path}/conv_transformer_multitask.keras"
         if not os.path.exists(model_file):
-            model_file = f"{path}/best_model.keras"
+            model_file = f"{load_path}/best_model.keras"
             
         self.model = tf.keras.models.load_model(model_file, custom_objects=custom)
         
-        scaler_file = f"{path}/scaler.pkl"
+        scaler_file = f"{load_path}/scaler.pkl"
         if os.path.exists(scaler_file):
             with open(scaler_file, "rb") as f: self.scaler = pickle.load(f)
             
-        threshold_file = f"{path}/threshold.pkl"
+        threshold_file = f"{load_path}/threshold.pkl"
         if os.path.exists(threshold_file):
             with open(threshold_file, "rb") as f: self.threshold = pickle.load(f)
 
