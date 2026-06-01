@@ -217,6 +217,13 @@ async def predict_single(request: Request, reading: SensorReading):
 @limiter.limit("10/minute")
 async def predict_batch(request: Request, batch: BatchPredictionRequest):
     """Predict anomalies for a batch of sensor readings."""
+    # Validate input size FIRST — this is a pure validation, independent of model state
+    if len(batch.readings) < SEQ_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need at least {SEQ_LEN} readings for prediction"
+        )
+
     det = get_detector()
     if not det:
         raise HTTPException(status_code=503, detail="Model not loaded")
@@ -229,12 +236,6 @@ async def predict_batch(request: Request, batch: BatchPredictionRequest):
     df["timestamp"] = pd.date_range("now", periods=len(df), freq="100ms")
     df["label"] = 0
     df["fault_type"] = "none"
-    
-    if len(df) < SEQ_LEN:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Need at least {SEQ_LEN} readings for prediction"
-        )
     
     result = det.predict(df)
     thr = det.threshold

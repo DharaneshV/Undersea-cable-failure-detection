@@ -1,19 +1,63 @@
 """
 Tests for api.py - validates FastAPI endpoints.
+
+The detector is mocked at module level so these tests pass in CI even when
+the saved model weights cannot be loaded (e.g., cross-platform TF serialisation
+differences between Windows and Linux builds).
 """
 
 import pytest
 import sys
 import os
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi.testclient import TestClient
-from api import app
+from config import SEQ_LEN, FEATURES
+
+
+# ── Fake detector ─────────────────────────────────────────────────────────────
+def _make_fake_detector():
+    """Return a MagicMock that mimics CableFaultDetector well enough for API tests."""
+    import numpy as np
+    import pandas as pd
+
+    det = MagicMock()
+    det.threshold = 0.15
+
+    def fake_predict(df):
+        n = len(df)
+        result = df.copy()
+        result["anomaly_score"] = np.zeros(n)
+        result["recon_error"] = np.zeros(n)
+        result["fault_diagnosis"] = "Normal"
+        result["cable_distance_norm"] = np.zeros(n)
+        for feat in FEATURES:
+            result[f"err_{feat}"] = np.zeros(n)
+        # First SEQ_LEN-1 rows have NaN scores (warm-up window)
+        result.loc[:SEQ_LEN - 2, "anomaly_score"] = float("nan")
+        return result
+
+    det.predict.side_effect = fake_predict
+    return det
+
+
+@pytest.fixture(scope="module")
+def fake_detector():
+    return _make_fake_detector()
+
+
+@pytest.fixture(autouse=True)
+def patch_detector(fake_detector):
+    """Patch get_detector() for every test so no real model weights are needed."""
+    with patch("api.get_detector", return_value=fake_detector):
+        yield
 
 
 @pytest.fixture
 def client():
+    from api import app
     return TestClient(app)
 
 
