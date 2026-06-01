@@ -345,7 +345,8 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
             await websocket.close()
             return
 
-        result_full = det.predict(df_full)
+        # Run prediction in a separate thread to prevent blocking the async event loop
+        result_full = await asyncio.to_thread(det.predict, df_full)
         thr = det.threshold
         window = SEQ_LEN
         
@@ -375,102 +376,103 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
             
         detected_faults = []
 
-        for i in range(window, len(result_full)):
-            row = result_full.iloc[i]
+        # Stream the dataset continuously
+        while True:
+            for i in range(window, len(result_full)):
+                row = result_full.iloc[i]
 
-            sc = float(row["anomaly_score"]) if not pd.isna(row["anomaly_score"]) else 0.0
-            # anomaly_score is now 1-P(Normal) in [0,1] — use fixed probability thresholds
-            is_fault   = bool(sc > 0.30)   # Medium severity and above = detected fault
-            is_warning = bool(0.05 < sc <= 0.30 and not pd.isna(row["anomaly_score"]))
-            ftype = row.get("fault_type", "none")
+                sc = float(row["anomaly_score"]) if not pd.isna(row["anomaly_score"]) else 0.0
+                # anomaly_score is now 1-P(Normal) in [0,1] — use fixed probability thresholds
+                is_fault   = bool(sc > 0.30)   # Medium severity and above = detected fault
+                is_warning = bool(0.05 < sc <= 0.30 and not pd.isna(row["anomaly_score"]))
+                ftype = row.get("fault_type", "none")
 
-            new_fault = None
-            if is_fault and (not detected_faults or detected_faults[-1]["_idx"] < i - 50):
-                dist = match_fault_distance(i, fault_log)
-                sev_label, sev_cls = severity_of(sc, thr)
-                
-                # Calculate XAI for this specific fault
-                feat_errs = {feat: float(row.get(f"err_{feat}", 0)) for feat in FEATURES}
-                tot_err = sum(feat_errs.values())
-                xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
-
-                # Fallback to deterministic cable distance if dataset has no spatial coordinates
-                estimated_dist = float(dist)
-                if estimated_dist == 0.0:
-                    # Generate a realistic distance between 50km and the end of the cable
-                    estimated_dist = float(50000.0 + ((i * 123457) % max(1, (current_cable_length - 100000.0))))
-
-                fault_obj = {
-                    "_idx": i, 
-                    "timestamp": str(row.get("timestamp", f"Sample {i}"))[:19],
-                    "fault_type": row.get("fault_diagnosis", "Anomaly"), 
-                    "severity": sev_label,
-                    "anomaly_score": round(sc, 4), 
-                    "estimated_distance_m": estimated_dist,
-                    "xai_text": xai_text
-                }
-                detected_faults.append(fault_obj)
-                new_fault = fault_obj
-
-            if i % frame_skip == 0 or i == len(result_full) - 1:
-                # Calculate dynamic health
-                chunk_scores = result_full.iloc[max(0, i - 150): i]["anomaly_score"].values
-                v = chunk_scores[~np.isnan(chunk_scores)]
-                if len(v) == 0:
-                    hp = 100.0
-                else:
-                    # Dynamic proportional health calculation
-                    # Calculate ratio of anomaly score to the fixed probability threshold 0.30
-                    fixed_thr = 0.30
-                    ratio = v / fixed_thr
-                    smoothed_ratio = float(ema(ratio, alpha=0.1)[-1])
+                new_fault = None
+                if is_fault and (not detected_faults or detected_faults[-1]["_idx"] < i - 50):
+                    dist = match_fault_distance(i, fault_log)
+                    sev_label, sev_cls = severity_of(sc, thr)
                     
-                    if smoothed_ratio <= 1.0:
+                    # Calculate XAI for this specific fault
+                    feat_errs = {feat: float(row.get(f"err_{feat}", 0)) for feat in FEATURES}
+                    tot_err = sum(feat_errs.values())
+                    xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
+
+                    # Fallback to deterministic cable distance if dataset has no spatial coordinates
+                    estimated_dist = float(dist)
+                    if estimated_dist == 0.0:
+                        # Generate a realistic distance between 50km and the end of the cable
+                        estimated_dist = float(50000.0 + ((i * 123457) % max(1, (current_cable_length - 100000.0))))
+
+                    fault_obj = {
+                        "_idx": i, 
+                        "timestamp": str(row.get("timestamp", f"Sample {i}"))[:19],
+                        "fault_type": row.get("fault_diagnosis", "Anomaly"), 
+                        "severity": sev_label,
+                        "anomaly_score": round(sc, 4), 
+                        "estimated_distance_m": estimated_dist,
+                        "xai_text": xai_text
+                    }
+                    detected_faults.append(fault_obj)
+                    new_fault = fault_obj
+
+                if i % frame_skip == 0 or i == len(result_full) - 1:
+                    # Calculate dynamic health
+                    chunk_scores = result_full.iloc[max(0, i - 150): i]["anomaly_score"].values
+                    v = chunk_scores[~np.isnan(chunk_scores)]
+                    if len(v) == 0:
                         hp = 100.0
                     else:
-                        # Dynamic health penalty (max ratio is ~3.33 since max prob is 1.0)
-                        # We use a multiplier of 35 to ensure severe faults drop health significantly
-                        penalty = (smoothed_ratio - 1.0) * 35.0
-                        hp = float(np.clip(100.0 - penalty, 0.0, 100.0))
+                        # Dynamic proportional health calculation
+                        # Calculate ratio of anomaly score to the fixed probability threshold 0.30
+                        fixed_thr = 0.30
+                        ratio = v / fixed_thr
+                        smoothed_ratio = float(ema(ratio, alpha=0.1)[-1])
+                        
+                        if smoothed_ratio <= 1.0:
+                            hp = 100.0
+                        else:
+                            # Dynamic health penalty (max ratio is ~3.33 since max prob is 1.0)
+                            # We use a multiplier of 35 to ensure severe faults drop health significantly
+                            penalty = (smoothed_ratio - 1.0) * 35.0
+                            hp = float(np.clip(100.0 - penalty, 0.0, 100.0))
 
-                feat_errs = {feat: float(row.get(f"err_{feat}", 0)) for feat in FEATURES}
-                tot_err = sum(feat_errs.values())
-                xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
-                
-                from config import CABLE_LENGTH
-                
-                payload = {
-                    "index": int(i),
-                    "total": int(len(result_full)),
-                    "cable_domain_id":     int(row.get("cable_domain_id", 0)),
-                    "timestamp": str(row.get("timestamp", f"Sample {i}"))[:19],
-                    "voltage":             round(float(row.get("voltage", 0.0)), 2),
-                    "current":             round(float(row.get("current", 0.0)), 3),
-                    "temperature":         round(float(row.get("temperature", 0.0)), 2),
-                    "vibration":           round(float(row.get("vibration", 0.0)), 4),
-                    "acoustic_strain":     round(float(row.get("acoustic_strain", 0.0)), 4),
-                    "optical_osnr":        round(float(row.get("optical_osnr", 20.0)), 2),
-                    "optical_ber":         round(float(row.get("optical_ber", 0.0)), 6),
-                    "optical_power":       round(float(row.get("optical_power", 0.0)), 3),
-                    "cable_distance_norm": round(float(row.get("cable_distance_norm", 0.0)), 4),
-                    "anomaly_score": round(sc, 5),
-                    "threshold":     round(thr, 5),
-                    "recon_error":   round(float(row.get("recon_error", 0.0)) if pd.notna(row.get("recon_error", 0.0)) else 0.0, 5),
-                    "is_fault":     is_fault,
-                    "is_warning":   is_warning,
-                    "health_pct":   round(hp, 1),
-                    "xai_text":     xai_text,
-                    "new_fault":    new_fault,
-                    "cable_length": current_cable_length,
-                }
-                await websocket.send_text(json.dumps(payload))
-                
-                if delay > 0:
-                    await asyncio.sleep(delay * frame_skip)
+                    feat_errs = {feat: float(row.get(f"err_{feat}", 0)) for feat in FEATURES}
+                    tot_err = sum(feat_errs.values())
+                    xai_text = " | ".join([f"{f.title()}: {v/tot_err*100:.0f}%" for f, v in sorted(feat_errs.items(), key=lambda x: x[1], reverse=True)[:2]]) if tot_err > 0 else "Unknown"
+                    
+                    from config import CABLE_LENGTH
+                    
+                    payload = {
+                        "index": int(i),
+                        "total": int(len(result_full)),
+                        "cable_domain_id":     int(row.get("cable_domain_id", 0)),
+                        "timestamp": str(row.get("timestamp", f"Sample {i}"))[:19],
+                        "voltage":             round(float(row.get("voltage", 0.0)), 2),
+                        "current":             round(float(row.get("current", 0.0)), 3),
+                        "temperature":         round(float(row.get("temperature", 0.0)), 2),
+                        "vibration":           round(float(row.get("vibration", 0.0)), 4),
+                        "acoustic_strain":     round(float(row.get("acoustic_strain", 0.0)), 4),
+                        "optical_osnr":        round(float(row.get("optical_osnr", 20.0)), 2),
+                        "optical_ber":         round(float(row.get("optical_ber", 0.0)), 6),
+                        "optical_power":       round(float(row.get("optical_power", 0.0)), 3),
+                        "cable_distance_norm": round(float(row.get("cable_distance_norm", 0.0)), 4),
+                        "anomaly_score": round(sc, 5),
+                        "threshold":     round(thr, 5),
+                        "recon_error":   round(float(row.get("recon_error", 0.0)) if pd.notna(row.get("recon_error", 0.0)) else 0.0, 5),
+                        "is_fault":     is_fault,
+                        "is_warning":   is_warning,
+                        "health_pct":   round(hp, 1),
+                        "xai_text":     xai_text,
+                        "new_fault":    new_fault,
+                        "cable_length": current_cable_length,
+                    }
+                    await websocket.send_text(json.dumps(payload))
+                    
+                    if delay > 0:
+                        await asyncio.sleep(delay * frame_skip)
 
-        await websocket.send_text(json.dumps({"done": True}))
-        await websocket.close()
-        print("Done streaming.")
+            # Optional: Add a short pause before restarting the loop
+            await asyncio.sleep(1.0)
     except WebSocketDisconnect:
         print("Client disconnected.")
     except Exception as e:
