@@ -25,8 +25,36 @@ saved_model/*.pkl
 
 # ── Generated outputs ─────────────────────────────────────────
 evaluation_plots/
+generated_reports/
 /*.csv
 *.zip
+
+# ── Scratch / one-off dev scripts ─────────────────────────────
+scratch/
+debug_load.py
+test_core.py
+eval_real.py
+extract_real_showcase.py
+fetch_azure_pdm.py
+fetch_dataset.py
+fetch_datasets.py
+fetch_optical_dataset.py
+generate_kb.py
+generate_kb_txt.py
+generate_showcase.py
+generate_architecture_docx.py
+generate_docx_report.py
+prep_data.py
+pull_uci_real_data.py
+
+# ── Generated documents (not source code) ─────────────────────
+*.docx
+Project_Report.txt
+Project_Knowledge_Base_and_PPT_Prep.txt
+Detailed_Project_Description.md
+Undersea_Cable_Failure_Detection_Report.docx
+run.txt
+undersea_cable_diagrams.md
 
 # ── Allow datasets directory (real-world data) ────────────────
 !datasets/
@@ -35,6 +63,15 @@ datasets/_pdm_telemetry_raw.csv
 datasets/_pdm_failures_raw.csv
 datasets/azure_pdm_full.csv
 datasets/azure_pdm_full_fault_log.csv
+# Exclude raw/duplicate datasets
+datasets/real_data.csv
+datasets/realistic_data.csv
+datasets/realistic_data_fault_log.csv
+datasets/my_kaggle_data.csv
+datasets/my_kaggle_data_fault_log.csv
+datasets/ai4i2020.csv
+datasets/ai4i2020_fault_log.csv
+datasets/Smart Grid Terminal Fault Dataset.csv
 
 # ── IDE / OS ──────────────────────────────────────────────────
 .vscode/
@@ -48,4 +85,3 @@ desktop.ini
 # ── Logs ──────────────────────────────────────────────────────
 *.log
 logs/
-generated_reports/
