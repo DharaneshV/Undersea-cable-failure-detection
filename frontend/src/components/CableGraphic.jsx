@@ -7,14 +7,15 @@ const CY   = 130;   // cable y position
 const CW   = VB_W - 2 * MX;
 
 const FAULT_COLORS = {
-  cable_cut:          '#ff4d6d',
-  anchor_drag:        '#ffab40',
-  overheating:        '#ff7d45',
-  insulation_failure: '#a855f7',
-  'Short Circuit':    '#ff4d6d',
-  'Open Circuit':     '#ffab40',
-  'High-Impedance':   '#a855f7',
-  Normal:             '#00ffc8',
+  physical_cut:               '#ff4d6d',
+  high_impedance_degradation: '#ffab40',
+  overheating:                '#ff7d45',
+  shunt_fault:                '#a855f7',
+  insulation_failure:         '#a855f7',
+  'Short Circuit':            '#ff4d6d',
+  'Open Circuit':             '#ffab40',
+  'High-Impedance':           '#a855f7',
+  Normal:                     '#00ffc8',
 };
 
 function getFaultColor(ftype) {

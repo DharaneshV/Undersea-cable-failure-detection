@@ -27,22 +27,37 @@ def make_sequences(data: np.ndarray, seq_len: int) -> np.ndarray:
 def clip_to_scaler_bounds(data: np.ndarray, scaler) -> np.ndarray:
     """
     Clips inference data to the Min/Max range seen during training.
-    Prevents the Scaler from extrapolating, which often produces
-    nonsensical inputs for the model during extreme sensor spikes.
+    Prevents the Scaler from extrapolating wildly on extreme sensor spikes.
+
+    IMPORTANT: Skips clipping for features where the training range is
+    degenerate (data_min_ == data_max_, i.e. the feature was constant zero
+    in the training set, e.g. optical_osnr/ber/power when the model was
+    trained on electrical-only data). Clipping those to [0, 0] would
+    destroy all real optical readings. We let them pass through — the
+    MinMaxScaler maps them to 0 as a constant, which is better than
+    silently zeroing out valid fault signals.
     """
     lo, hi = scaler.data_min_, scaler.data_max_
-    
-    # Optional: Log warning if we're clipping a significant amount
-    # (e.g. more than 10% beyond the original range)
+
+    clipped = data.copy()
     for i in range(data.shape[1]):
         col_min, col_max = data[:, i].min(), data[:, i].max()
+        feature_range = hi[i] - lo[i]
+
+        # Skip degenerate (constant) features — clipping to [0,0] would
+        # destroy real optical / acoustic channel values.
+        if feature_range < 1e-9:
+            continue
+
         if col_min < lo[i] * 0.9 or col_max > hi[i] * 1.1:
             log.warning(
                 "Feature %d has extreme values [%.4f, %.4f] outside training range [%.4f, %.4f]. Clipping.",
-                i, col_min, col_max, lo[i], hi[i]
+                i, col_min, col_max, lo[i], hi[i],
             )
-            
-    return np.clip(data, lo, hi)
+        clipped[:, i] = np.clip(data[:, i], lo[i], hi[i])
+
+    return clipped
+
 
 
 def find_optimal_threshold(scores: np.ndarray, labels: np.ndarray) -> float:

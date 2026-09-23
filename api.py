@@ -64,9 +64,9 @@ class SensorReading(BaseModel):
     vibration:   float = Field(..., ge=-10, le=10,   description="Vibration in g")
     # Extended multi-modal sensors (optional — default to neutral/safe values)
     acoustic_strain:     float = Field(default=0.0,  ge=-100, le=100,  description="Acoustic strain (µε)")
-    optical_osnr:        float = Field(default=20.0, ge=-30,  le=50,   description="Optical OSNR (dB)")
-    optical_ber:         float = Field(default=0.0,  ge=-20,  le=5,    description="Optical BER (log10)")
-    optical_power:       float = Field(default=0.0,  ge=-10,  le=5,    description="Optical power (dBm)")
+    optical_osnr:        float = Field(default=20.0, ge=-30,  le=60,   description="Optical OSNR (dB)")
+    optical_ber:         float = Field(default=0.0,  ge=-20,  le=10,   description="Optical BER (log10)")
+    optical_power:       float = Field(default=0.0,  ge=-40,  le=10,   description="Optical power (dBm) — fault states can reach -30 dBm")
     cable_distance_norm: float = Field(default=0.0,  ge=0,    le=1,    description="Normalised fault position [0–1]")
     # Domain identifier — 0=Electrical, 1=Optical, 2=Hybrid, 3=Acoustic
     cable_domain_id:     int   = Field(default=0,    ge=0,    le=9,    description="Cable domain ID")
@@ -471,7 +471,7 @@ async def websocket_stream(websocket: WebSocket, dataset: str, speed: str = "2×
         # Stream complete — notify client and close cleanly
         await websocket.send_text(json.dumps({"done": True}))
         await websocket.close()
-        log.info("Stream complete for dataset: %s", dataset_name)
+        log.info("Stream complete for dataset: %s", dataset)
     except WebSocketDisconnect:
         print("Client disconnected.")
     except Exception as e:

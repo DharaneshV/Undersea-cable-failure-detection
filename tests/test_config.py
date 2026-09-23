@@ -33,7 +33,7 @@ class TestConfigValues:
             assert std > 0
 
     def test_fault_types_valid(self):
-        expected = {"cable_cut", "anchor_drag", "overheating", "insulation_failure"}
+        expected = {"physical_cut", "high_impedance_degradation", "shunt_fault"}
         assert set(FAULT_TYPES) == expected
 
     def test_features_valid(self):

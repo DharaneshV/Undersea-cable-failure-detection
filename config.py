@@ -25,27 +25,30 @@ CABLE_DOMAIN_NAMES = {
     3: "Acoustic (Piezo-Array)",
 }
 
-FAULT_TYPES = ["cable_cut", "anchor_drag", "overheating", "insulation_failure"]
+FAULT_TYPES = ["physical_cut", "high_impedance_degradation", "shunt_fault"]
 
 # Mapping from all dataset fault type strings to model class indices
 CLASSIFICATION_MAP = {
-    # Core simulator types
-    "none":                0,  # Normal
-    "insulation_failure":  1,  # Short Circuit
-    "Insulation_failure":  1,  # alias (capitalised, seen in azure_pdm)
-    " Insulation_failure": 1,  # alias (leading space, seen in azure_pdm)
-    "cable_cut":           2,  # Open Circuit
-    "overheating":         3,  # High-Z / Degradation
-    "anchor_drag":         3,  # High-Z / Degradation (mechanical proxy)
-    # industrial_pump / azure_pdm extras
-    "bearing_wear":        3,  # High-Z / Degradation (mechanical wear)
-    "winding_short":       1,  # Short Circuit (winding insulation failure)
-    "seal_leak":           3,  # High-Z / Degradation (fluid ingress)
-    "corrosion":           3,  # High-Z / Degradation
-    "mechanical_wear":     3,  # High-Z / Degradation
+    # Core realistic types
+    "none":                        0,  # Normal
+    "shunt_fault":                 1,  # Short Circuit
+    "insulation_failure":          1,  # Short Circuit (from PDM/pump)
+    "Insulation_failure":          1,  # alias (capitalised, seen in azure_pdm)
+    " Insulation_failure":         1,  # alias (leading space, seen in azure_pdm)
+    "winding_short":               1,  # Short Circuit (winding insulation failure)
+    
+    "physical_cut":                2,  # Open Circuit
+    "cable_cut":                   2,  # Open Circuit (legacy synthetic)
+    
+    "high_impedance_degradation":  3,  # High-Z / Degradation
+    "overheating":                 3,  # High-Z / Degradation
+    "bearing_wear":                3,  # High-Z / Degradation (mechanical wear proxy)
+    "seal_leak":                   3,  # High-Z / Degradation (fluid ingress)
+    "corrosion":                   3,  # High-Z / Degradation
+    "mechanical_wear":             3,  # High-Z / Degradation
 }
 
-CLASS_NAMES = ["Normal", "Short Circuit", "Open Circuit", "High-Impedance"]
+CLASS_NAMES = ["Normal", "Shunt Fault (Short Circuit)", "Physical Cut (Open Circuit)", "High-Impedance Degradation"]
 NUM_CLASSES = 4
 
 # ── model ─────────────────────────────────────────────────────────────────────
@@ -90,11 +93,10 @@ CLASS_WEIGHTS = {
 
 # ── dashboard colours ─────────────────────────────────────────────────────────
 FAULT_COLORS = {
-    "cable_cut":          "#E24B4A",
-    "anchor_drag":        "#EF9F27",
-    "overheating":        "#D85A30",
-    "insulation_failure": "#7F77DD",
-    "none":               "#1D9E75",
+    "physical_cut":               "#E24B4A",
+    "high_impedance_degradation": "#EF9F27",
+    "shunt_fault":                "#7F77DD",
+    "none":                       "#1D9E75",
 }
 
 SENSOR_COLORS = {

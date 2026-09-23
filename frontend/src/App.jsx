@@ -239,7 +239,7 @@ function FaultHistoryTab({ faultLog, threshold, selectedDS }) {
         <span>Time</span><span>Type</span><span>Severity</span><span>Dist (m)</span>
       </div>
       <div style={{maxHeight: '600px', overflowY: 'auto'}}>
-        {faultLog.map((f, idx) => {
+        {faultLog.slice(0, 100).map((f, idx) => {
           const fs = severityOf(f.anomaly_score);
           return (
             <div key={idx} className="fault-log-row">
@@ -317,8 +317,11 @@ export default function App() {
 
   /* ── Toast management ─────────────────────────────────────────────────── */
   const pushToast = useCallback((fault) => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, fault }]);
+    const id = Date.now() + Math.random(); // Ensure unique ID even for same ms
+    setToasts(prev => {
+      const next = [...prev, { id, fault }];
+      return next.slice(-3); // Keep only the latest 3 toasts
+    });
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4200);
   }, []);
 
@@ -597,8 +600,8 @@ export default function App() {
                 {faultLog.length === 0 ? (
                   <div className="empty-log">System nominal — no faults detected.</div>
                 ) : (
-                  <div className="fault-log-scroll">
-                    {faultLog.map((f, idx) => {
+                  <div className="fault-log-scroll" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+                    {faultLog.slice(0, 100).map((f, idx) => {
                       const fs = severityOf(f.anomaly_score);
                       const distM = parseFloat(f.estimated_distance_m ?? 0);
                       const distLabel = distM > 1000
